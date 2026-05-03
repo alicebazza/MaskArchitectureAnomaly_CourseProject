@@ -20,12 +20,13 @@ random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
 
-NUM_CHANNELS = 3
+NUM_CHANNELS = 3 # 3 canali RGB
 NUM_CLASSES = 20
 # gpu training specific
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True
 
+# pre-processing per le immagini di input
 input_transform = Compose(
     [
         Resize((512, 1024), Image.BILINEAR),
@@ -34,6 +35,7 @@ input_transform = Compose(
     ]
 )
 
+# pre-processing maschere groud-truth
 target_transform = Compose(
     [
         Resize((512, 1024), Image.NEAREST),
@@ -59,8 +61,12 @@ def main():
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
     args = parser.parse_args()
-    anomaly_score_list = []
-    ood_gts_list = []
+    
+    # liste vuote dove verranno salvati i punteggi anomalia
+    anomaly_score_msp_list = []
+    anomaly_score_maxlogit_list = []
+    anomaly_score_maxentropy_list = []
+    ood_gts_list = [] # maschere ground truth OOD
 
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
@@ -72,11 +78,13 @@ def main():
     print ("Loading model: " + modelpath)
     print ("Loading weights: " + weightspath)
 
-    model = ERFNet(NUM_CLASSES)
+    device = torch.device("cpu" if args.cpu else "cuda")
+    model = ERFNet(NUM_CLASSES).to(device)
 
     if (not args.cpu):
-        model = torch.nn.DataParallel(model).cuda()
+        model = torch.nn.DataParallel(model)
 
+    # carica i pesi del modello preaddestrato nel modello ERFNet che ho appena creato
     def load_my_state_dict(model, state_dict):  #custom function to load model when not all dict elements
         own_state = model.state_dict()
         for name, param in state_dict.items():
@@ -95,24 +103,41 @@ def main():
     model.eval()
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
+    # ciclo su tutte le immagini
         print(path)
-        images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().cuda()
-        images = images.permute(0,3,1,2)
+        images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().to(device)
+        # images = images.permute(0,3,1,2) probabilmente sbagliato
         with torch.no_grad():
             result = model(images)
-        anomaly_result = 1.0 - np.max(result.squeeze(0).data.cpu().numpy(), axis=0)            
-        pathGT = path.replace("images", "labels_masks")                
+        logits = result.squeeze(0)   # [C, H, W]
+
+        probs = torch.softmax(logits, dim=0)
+        anomaly_result_msp = 1.0 - torch.max(probs, dim=0)[0]
+
+        anomaly_result_maxlogit = -torch.max(logits, dim=0)[0]
+
+        K = probs.shape[0]
+        entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=0)
+        entropy_normalized = entropy / torch.log(torch.tensor(float(K), device=probs.device))
+        anomaly_result_maxentropy = entropy_normalized
+
+        pathGT = path.replace("images", "labels_masks")
+        # costruisce il path della maschera a partire dal path dell'immagine
+        # cambia estensione a seconda del dataset
         if "RoadObsticle21" in pathGT:
-           pathGT = pathGT.replace("webp", "png")
+            pathGT = pathGT.replace("webp", "png")
         if "fs_static" in pathGT:
-           pathGT = pathGT.replace("jpg", "png")                
+            pathGT = pathGT.replace("jpg", "png")
         if "RoadAnomaly" in pathGT:
-           pathGT = pathGT.replace("jpg", "png")  
+            pathGT = pathGT.replace("jpg", "png")
 
-        mask = Image.open(pathGT)
-        mask = target_transform(mask)
-        ood_gts = np.array(mask)
-
+        mask = Image.open(pathGT) # legge la maschera
+        mask = target_transform(mask) # resize
+        ood_gts = np.array(mask) # trasforma in array
+        # maschera groud-truth dal dataset
+            
+        # ogni dataset ha codifiche diverse, le uniforma a:
+        # 0 = in-distribution, 1 = OoD, 255 =ignore
         if "RoadAnomaly" in pathGT:
             ood_gts = np.where((ood_gts==2), 1, ood_gts)
         if "LostAndFound" in pathGT:
@@ -126,38 +151,57 @@ def main():
             ood_gts = np.where((ood_gts==255), 1, ood_gts)
 
         if 1 not in np.unique(ood_gts):
-            continue              
+        # se non c'è nessun pixel OoD salta immagine
+            continue
         else:
-             ood_gts_list.append(ood_gts)
-             anomaly_score_list.append(anomaly_result)
-        del result, anomaly_result, ood_gts, mask
+                ood_gts_list.append(ood_gts)
+                anomaly_score_msp_list.append(anomaly_result_msp.cpu().numpy())
+                anomaly_score_maxlogit_list.append(anomaly_result_maxlogit.cpu().numpy())
+                anomaly_score_maxentropy_list.append(anomaly_result_maxentropy.cpu().numpy())
+        del result, anomaly_result_msp, anomaly_result_maxlogit,anomaly_result_maxentropy, ood_gts, mask
         torch.cuda.empty_cache()
 
     file.write( "\n")
 
-    ood_gts = np.array(ood_gts_list)
-    anomaly_scores = np.array(anomaly_score_list)
-
-    ood_mask = (ood_gts == 1)
-    ind_mask = (ood_gts == 0)
-
-    ood_out = anomaly_scores[ood_mask]
-    ind_out = anomaly_scores[ind_mask]
-
-    ood_label = np.ones(len(ood_out))
-    ind_label = np.zeros(len(ind_out))
+    def eval_score(ood_gts_list, anomaly_score_list):
     
-    val_out = np.concatenate((ind_out, ood_out))
-    val_label = np.concatenate((ind_label, ood_label))
+        ood_gts = np.array(ood_gts_list) # dim (N,H,W) con N=numero di immagini
+        anomaly_scores = np.array(anomaly_score_list)
+        
+        ood_mask = (ood_gts == 1) # true sui pixel OoD
+        ind_mask = (ood_gts == 0) # true sui pixel in-distribution
 
-    prc_auc = average_precision_score(val_label, val_out)
-    fpr = fpr_at_95_tpr(val_out, val_label)
+        ood_out = anomaly_scores[ood_mask] # score su pixel OoD
+        ind_out = anomaly_scores[ind_mask] # score su pixel normali
 
-    print(f'AUPRC score: {prc_auc*100.0}')
-    print(f'FPR@TPR95: {fpr*100.0}')
+        ood_label = np.ones(len(ood_out)) # etichette vere OoD = 1
+        ind_label = np.zeros(len(ind_out))
 
-    file.write(('    AUPRC score:' + str(prc_auc*100.0) + '   FPR@TPR95:' + str(fpr*100.0) ))
-    file.close()
+        val_out = np.concatenate((ind_out, ood_out))
+        val_label = np.concatenate((ind_label, ood_label))
+
+        prc_auc = average_precision_score(val_label, val_out)
+        fpr = fpr_at_95_tpr(val_out, val_label)
+
+        return [prc_auc, fpr]
+    
+    [prc_auc_msp, fpr_msp] = eval_score(ood_gts_list, anomaly_score_msp_list)
+    [prc_auc_maxlogit, fpr_maxlogit] = eval_score(ood_gts_list, anomaly_score_maxlogit_list)
+    [prc_auc_maxentropy, fpr_maxentropy] = eval_score(ood_gts_list, anomaly_score_maxentropy_list)
+
+    print(f'AUPRC msp score: {prc_auc_msp*100.0}')
+    print(f'FPR@TPR95 msp: {fpr_msp*100.0}')
+
+    print(f'AUPRC maxlogit score: {prc_auc_maxlogit*100.0}')
+    print(f'FPR@TPR95 maxlogit: {fpr_maxlogit*100.0}')
+
+    print(f'AUPRC maxentropy score: {prc_auc_maxentropy*100.0}')
+    print(f'FPR@TPR95 maxentropy: {fpr_maxentropy*100.0}')
+
+    file.write(('    AUPRC msp score:' + str(prc_auc_msp*100.0) + '   FPR@TPR95 msp:' + str(fpr_msp*100.0) +
+                '\n    AUPRC maxlogit score:' + str(prc_auc_maxlogit*100.0) + '   FPR@TPR95 maxlogit:' + str(fpr_maxlogit*100.0) +
+                '\n    AUPRC maxentropy score:' + str(prc_auc_maxentropy*100.0) + '   FPR@TPR95 maxentropy:' + str(fpr_maxentropy*100.0)))
+    file.close() # scriviamo su result.txt
 
 if __name__ == '__main__':
     main()
