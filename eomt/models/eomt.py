@@ -18,10 +18,10 @@ from models.scale_block import ScaleBlock
 class EoMT(nn.Module):
     def __init__(
         self,
-        encoder: nn.Module, # vision transformer
-        num_classes, # numero di categorie
-        num_q, # numero di istanze che possiamo predire per ogni immagine
-        num_blocks=4, # quanti ultimi blocchi usano EoMT
+        encoder: nn.Module,
+        num_classes,
+        num_q,
+        num_blocks=4,
         masked_attn_enabled=True,
     ):
         super().__init__()
