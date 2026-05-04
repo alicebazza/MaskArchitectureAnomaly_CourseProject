@@ -55,7 +55,8 @@ def main():
         "or a single glob pattern such as 'directory/*.jpg'",
     )  
     parser.add_argument('--loadDir',default="../trained_models/")
-    parser.add_argument('--loadWeights', default="erfnet_pretrained.pth")
+    parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
+    parser.add_argument('--eomtWeights', default="eomt_pretrained.pth")
     parser.add_argument('--loadModel', default="erfnet.py")
     parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
@@ -78,7 +79,9 @@ def main():
     if not os.path.exists('results.txt'):
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
-
+    
+    erfnet_weightspath = osp.join(args.loadDir, args.erfnetWeights)
+    eomt_weightspath = osp.join(args.loadDir, args.eomtWeights)
     modelpath = args.loadDir + args.loadModel
     weightspath = args.loadDir + args.loadWeights
 
@@ -89,7 +92,7 @@ def main():
     model_ERFNet = ERFNet(NUM_CLASSES).to(device)
 
     if (not args.cpu):
-        model_ERFNet = torch.nn.DataParallel(model)
+        model_ERFNet = torch.nn.DataParallel(model_ERFNet)
     
     encoder = ViT(
     img_size=(512, 1024),
@@ -105,12 +108,13 @@ def main():
     masked_attn_enabled=True,
     )
 
-    checkpoint = torch.load(weightspath, map_location=device)
+    erfnet_checkpoint = torch.load(erfnet_weightspath, map_location=device)
 
-    if "state_dict" in checkpoint:
-        checkpoint = checkpoint["state_dict"]
-    elif "model" in checkpoint:
-        checkpoint = checkpoint["model"]
+    if "state_dict" in erfnet_checkpoint:
+        erfnet_checkpoint = erfnet_checkpoint["state_dict"]
+    elif "model" in erfnet_checkpoint:
+        erfnet_checkpoint = erfnet_checkpoint["model"]
+
 
     # carica i pesi del modello preaddestrato nel modello ERFNet che ho appena creato
     def load_my_state_dict(model, state_dict):  #custom function to load model when not all dict elements
@@ -126,7 +130,7 @@ def main():
                 own_state[name].copy_(param)
         return model
 
-    model_ERFNet = load_my_state_dict(model_ERFNet, torch.load(weightspath, map_location=lambda storage, loc: storage))
+    model_ERFNet = load_my_state_dict(model_ERFNet, erfnet_checkpoint)
     print ("Model and weights LOADED successfully")
     model_ERFNet.eval()
     
@@ -135,7 +139,7 @@ def main():
     model_EoMT = model_EoMT.to(device)
     model_EoMT.eval()
     
-    def anomaly(logits, model):
+    def anomaly(logits, model_name):
         anomaly_result = []
     
         probs = torch.softmax(logits, dim=0)
@@ -151,11 +155,11 @@ def main():
         anomaly_result_maxentropy = entropy_normalized
         anomaly_result.append(anomaly_result_maxentropy)
         
-        if model == model_EoMT
+        if model_name == "EoMT"
             anomaly_result_rba = -torch.tanh(logits).sum(dim=0)
             anomaly_result.append(anomaly_result_rba)
         
-    return [anomaly_result]
+        return [anomaly_result]
         
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
@@ -193,8 +197,8 @@ def main():
         probs = pixel_probs.squeeze(0)      # [C, H, W]
         logits_EoMT = torch.log(probs + 1e-8)    # pseudo-logits
         
-        anomaly_result_ERFNet = anomaly(logits_ERFNet, model_ERFNet)
-        anomaly_result_EoMT = anomaly(logits_EoMT, model_EoMT)
+        anomaly_result_ERFNet = anomaly(logits_ERFNet, "ERFNet")
+        anomaly_result_EoMT = anomaly(logits_EoMT, "EoMT")
     
 
         pathGT = path.replace("images", "labels_masks")
@@ -265,16 +269,16 @@ def main():
 
         return [prc_auc, fpr]
     
-    [prc_auc_msp_ERFNet, fpr_msp_ERFNet] = eval_score(ood_gts_list, anomaly_score_msp_list_ERFNEt)
+    [prc_auc_msp_ERFNet, fpr_msp_ERFNet] = eval_score(ood_gts_list, anomaly_score_msp_list_ERFNet)
     [prc_auc_maxlogit_ERFNet, fpr_maxlogit_ERFNet] = eval_score(ood_gts_list, anomaly_score_maxlogit_list_ERFNet)
     [prc_auc_maxentropy_ERFNet, fpr_maxentropy_ERFNet] = eval_score(ood_gts_list, anomaly_score_maxentropy_list_ERFNet)
-    [prc_auc_msp_EoMt, fpr_msp_EoMT] = eval_score(ood_gts_list, anomaly_score_msp_list_EoMT)
+    [prc_auc_msp_EoMT, fpr_msp_EoMT] = eval_score(ood_gts_list, anomaly_score_msp_list_EoMT)
     [prc_auc_maxlogit_EoMT, fpr_maxlogit_EoMT] = eval_score(ood_gts_list, anomaly_score_maxlogit_list_EoMT)
     [prc_auc_maxentropy_EoMT, fpr_maxentropy_EoMT] = eval_score(ood_gts_list, anomaly_score_maxentropy_list_EoMT)
     [prc_auc_rba_EoMT, fpr_rba_EoMT] = eval_score(ood_gts_list, anomaly_score_rba_list_EoMT)
     
     print(f'AUPRC msp score ERFNet: {prc_auc_msp_ERFNet*100.0}')
-    print(f'FPR@TPR95 msp ERFNet: {fpr_msp_ERFNEt*100.0}')
+    print(f'FPR@TPR95 msp ERFNet: {fpr_msp_ERFNet*100.0}')
 
     print(f'AUPRC maxlogit score ERFNet: {prc_auc_maxlogit_ERFNet*100.0}')
     print(f'FPR@TPR95 maxlogit ERFNet: {fpr_maxlogit_ERFNet*100.0}')
