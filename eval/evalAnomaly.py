@@ -1,5 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # per guardare sia eval che eomt
 import cv2
 import glob
 import torch
