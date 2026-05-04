@@ -7,6 +7,8 @@ import random
 from PIL import Image
 import numpy as np
 from erfnet import ERFNet
+from eomt.models.eomt import EoMT
+from eomt.models.vit import ViT
 import os.path as osp
 from argparse import ArgumentParser
 from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
@@ -63,9 +65,14 @@ def main():
     args = parser.parse_args()
     
     # liste vuote dove verranno salvati i punteggi anomalia
-    anomaly_score_msp_list = []
-    anomaly_score_maxlogit_list = []
-    anomaly_score_maxentropy_list = []
+    anomaly_score_msp_list_ERFNet = []
+    anomaly_score_maxlogit_list_ERFNet = []
+    anomaly_score_maxentropy_list_ERFNet = []
+    anomaly_score_msp_list_EoMT = []
+    anomaly_score_maxlogit_list_EoMT = []
+    anomaly_score_maxentropy_list_EoMT = []
+    anomaly_score_rba_list_EoMT = []
+    
     ood_gts_list = [] # maschere ground truth OOD
 
     if not os.path.exists('results.txt'):
@@ -79,10 +86,31 @@ def main():
     print ("Loading weights: " + weightspath)
 
     device = torch.device("cpu" if args.cpu else "cuda")
-    model = ERFNet(NUM_CLASSES).to(device)
+    model_ERFNet = ERFNet(NUM_CLASSES).to(device)
 
     if (not args.cpu):
-        model = torch.nn.DataParallel(model)
+        model_ERFNet = torch.nn.DataParallel(model)
+    
+    encoder = ViT(
+    img_size=(512, 1024),
+    patch_size=14,
+    backbone_name="vit_large_patch14_reg4_dinov2",
+    )
+
+    model_EoMT = EoMT(
+    encoder=encoder,
+    num_classes=NUM_CLASSES,
+    num_q=100,
+    num_blocks=4,
+    masked_attn_enabled=True,
+    )
+
+    checkpoint = torch.load(weightspath, map_location=device)
+
+    if "state_dict" in checkpoint:
+        checkpoint = checkpoint["state_dict"]
+    elif "model" in checkpoint:
+        checkpoint = checkpoint["model"]
 
     # carica i pesi del modello preaddestrato nel modello ERFNet che ho appena creato
     def load_my_state_dict(model, state_dict):  #custom function to load model when not all dict elements
@@ -98,9 +126,37 @@ def main():
                 own_state[name].copy_(param)
         return model
 
-    model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
+    model_ERFNet = load_my_state_dict(model_ERFNet, torch.load(weightspath, map_location=lambda storage, loc: storage))
     print ("Model and weights LOADED successfully")
-    model.eval()
+    model_ERFNet.eval()
+    
+    model_EoMT.load_state_dict(checkpoint, strict=False)
+
+    model_EoMT = model_EoMT.to(device)
+    model_EoMT.eval()
+    
+    def anomaly(logits, model):
+        anomaly_result = []
+    
+        probs = torch.softmax(logits, dim=0)
+        anomaly_result_msp = 1.0 - torch.max(probs, dim=0)[0]
+        anomaly_result.append(anomaly_result_msp)
+
+        anomaly_result_maxlogit = -torch.max(logits, dim=0)[0]
+        anomaly_result.append(anomaly_result_maxlogit)
+
+        K = probs.shape[0]
+        entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=0)
+        entropy_normalized = entropy / torch.log(torch.tensor(float(K), device=probs.device))
+        anomaly_result_maxentropy = entropy_normalized
+        anomaly_result.append(anomaly_result_maxentropy)
+        
+        if model == model_EoMT
+            anomaly_result_rba = -torch.tanh(logits).sum(dim=0)
+            anomaly_result.append(anomaly_result_rba)
+        
+    return [anomaly_result]
+        
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
     # ciclo su tutte le immagini
@@ -108,18 +164,38 @@ def main():
         images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().to(device)
         # images = images.permute(0,3,1,2) probabilmente sbagliato
         with torch.no_grad():
-            result = model(images)
-        logits = result.squeeze(0)   # [C, H, W]
+            result = model_ERFNet(images)
+            mask_logits_per_layer, class_logits_per_layer = model_EoMT(images)
+        
+            
+        logits_ERFNet = result.squeeze(0)   # [C, H, W]
+        
+        mask_logits = mask_logits_per_layer[-1]        # [B, Q, Hm, Wm]
+        class_logits = class_logits_per_layer[-1]      # [B, Q, C+1]
 
-        probs = torch.softmax(logits, dim=0)
-        anomaly_result_msp = 1.0 - torch.max(probs, dim=0)[0]
+        # porta le mask alla risoluzione dell'immagine/GT
+        mask_logits = torch.nn.functional.interpolate(
+            mask_logits,
+            size=(512, 1024),
+            mode="bilinear",
+            align_corners=False,
+        )
+        
+        mask_prob = torch.sigmoid(mask_logits)              # [B, Q, H, W]
+        class_prob = torch.softmax(class_logits, dim=-1)    # [B, Q, C+1]
 
-        anomaly_result_maxlogit = -torch.max(logits, dim=0)[0]
+        # togli classe no-object
+        class_prob = class_prob[:, :, :-1]                  # [B, Q, C]
+        
+        pixel_probs = torch.einsum("bqc, bqhw -> bchw", class_prob, mask_prob)
+        pixel_probs = pixel_probs / (pixel_probs.sum(dim=1, keepdim=True) + 1e-8)
 
-        K = probs.shape[0]
-        entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=0)
-        entropy_normalized = entropy / torch.log(torch.tensor(float(K), device=probs.device))
-        anomaly_result_maxentropy = entropy_normalized
+        probs = pixel_probs.squeeze(0)      # [C, H, W]
+        logits_EoMT = torch.log(probs + 1e-8)    # pseudo-logits
+        
+        anomaly_result_ERFNet = anomaly(logits_ERFNet, model_ERFNet)
+        anomaly_result_EoMT = anomaly(logits_EoMT, model_EoMT)
+    
 
         pathGT = path.replace("images", "labels_masks")
         # costruisce il path della maschera a partire dal path dell'immagine
@@ -155,10 +231,14 @@ def main():
             continue
         else:
                 ood_gts_list.append(ood_gts)
-                anomaly_score_msp_list.append(anomaly_result_msp.cpu().numpy())
-                anomaly_score_maxlogit_list.append(anomaly_result_maxlogit.cpu().numpy())
-                anomaly_score_maxentropy_list.append(anomaly_result_maxentropy.cpu().numpy())
-        del result, anomaly_result_msp, anomaly_result_maxlogit,anomaly_result_maxentropy, ood_gts, mask
+                anomaly_score_msp_list_ERFNet.append(anomaly_result_ERFNet[0].cpu().numpy())
+                anomaly_score_maxlogit_list_ERFNet.append(anomaly_result_ERFNet[1].cpu().numpy())
+                anomaly_score_maxentropy_list_ERFNet.append(anomaly_result_ERFNet[2].cpu().numpy())
+                anomaly_score_msp_list_EoMT.append(anomaly_result_EoMT[0].cpu().numpy())
+                anomaly_score_maxlogit_list_EoMT.append(anomaly_result_EoMT[1].cpu().numpy())
+                anomaly_score_maxentropy_list_EoMT.append(anomaly_result_EoMT[2].cpu().numpy())
+                anomaly_score_rba_list_EoMT.append(anomaly_result_EoMT[3].cpu().numpy())
+        del result, anomaly_result_ERFNet, anomaly_result_EoMT, ood_gts, mask
         torch.cuda.empty_cache()
 
     file.write( "\n")
@@ -185,22 +265,44 @@ def main():
 
         return [prc_auc, fpr]
     
-    [prc_auc_msp, fpr_msp] = eval_score(ood_gts_list, anomaly_score_msp_list)
-    [prc_auc_maxlogit, fpr_maxlogit] = eval_score(ood_gts_list, anomaly_score_maxlogit_list)
-    [prc_auc_maxentropy, fpr_maxentropy] = eval_score(ood_gts_list, anomaly_score_maxentropy_list)
+    [prc_auc_msp_ERFNet, fpr_msp_ERFNet] = eval_score(ood_gts_list, anomaly_score_msp_list_ERFNEt)
+    [prc_auc_maxlogit_ERFNet, fpr_maxlogit_ERFNet] = eval_score(ood_gts_list, anomaly_score_maxlogit_list_ERFNet)
+    [prc_auc_maxentropy_ERFNet, fpr_maxentropy_ERFNet] = eval_score(ood_gts_list, anomaly_score_maxentropy_list_ERFNet)
+    [prc_auc_msp_EoMt, fpr_msp_EoMT] = eval_score(ood_gts_list, anomaly_score_msp_list_EoMT)
+    [prc_auc_maxlogit_EoMT, fpr_maxlogit_EoMT] = eval_score(ood_gts_list, anomaly_score_maxlogit_list_EoMT)
+    [prc_auc_maxentropy_EoMT, fpr_maxentropy_EoMT] = eval_score(ood_gts_list, anomaly_score_maxentropy_list_EoMT)
+    [prc_auc_rba_EoMT, fpr_rba_EoMT] = eval_score(ood_gts_list, anomaly_score_rba_list_EoMT)
+    
+    print(f'AUPRC msp score ERFNet: {prc_auc_msp_ERFNet*100.0}')
+    print(f'FPR@TPR95 msp ERFNet: {fpr_msp_ERFNEt*100.0}')
 
-    print(f'AUPRC msp score: {prc_auc_msp*100.0}')
-    print(f'FPR@TPR95 msp: {fpr_msp*100.0}')
+    print(f'AUPRC maxlogit score ERFNet: {prc_auc_maxlogit_ERFNet*100.0}')
+    print(f'FPR@TPR95 maxlogit ERFNet: {fpr_maxlogit_ERFNet*100.0}')
 
-    print(f'AUPRC maxlogit score: {prc_auc_maxlogit*100.0}')
-    print(f'FPR@TPR95 maxlogit: {fpr_maxlogit*100.0}')
+    print(f'AUPRC maxentropy score ERFNet: {prc_auc_maxentropy_ERFNet*100.0}')
+    print(f'FPR@TPR95 maxentropy ERFNet: {fpr_maxentropy_ERFNet*100.0}')
 
-    print(f'AUPRC maxentropy score: {prc_auc_maxentropy*100.0}')
-    print(f'FPR@TPR95 maxentropy: {fpr_maxentropy*100.0}')
+    file.write(('    AUPRC msp score ERFNet:' + str(prc_auc_msp_ERFNet*100.0) + '   FPR@TPR95 msp ERFNet:' + str(fpr_msp_ERFNet*100.0) +
+                '\n    AUPRC maxlogit score ERFNet:' + str(prc_auc_maxlogit_ERFNet*100.0) + '   FPR@TPR95 maxlogit ERFNet:' + str(fpr_maxlogit_ERFNet*100.0) +
+                '\n    AUPRC maxentropy score ERFNet:' + str(prc_auc_maxentropy_ERFNet*100.0) + '   FPR@TPR95 maxentropy ERFNet:' + str(fpr_maxentropy_ERFNet*100.0)))
+    
+    print(f'AUPRC msp score EoMT: {prc_auc_msp_EoMT*100.0}')
+    print(f'FPR@TPR95 msp EoMT: {fpr_msp_EoMT*100.0}')
 
-    file.write(('    AUPRC msp score:' + str(prc_auc_msp*100.0) + '   FPR@TPR95 msp:' + str(fpr_msp*100.0) +
-                '\n    AUPRC maxlogit score:' + str(prc_auc_maxlogit*100.0) + '   FPR@TPR95 maxlogit:' + str(fpr_maxlogit*100.0) +
-                '\n    AUPRC maxentropy score:' + str(prc_auc_maxentropy*100.0) + '   FPR@TPR95 maxentropy:' + str(fpr_maxentropy*100.0)))
+    print(f'AUPRC maxlogit score EoMT: {prc_auc_maxlogit_EoMT*100.0}')
+    print(f'FPR@TPR95 maxlogit EoMT: {fpr_maxlogit_EoMT*100.0}')
+
+    print(f'AUPRC maxentropy score EoMT: {prc_auc_maxentropy_EoMT*100.0}')
+    print(f'FPR@TPR95 maxentropy EoMT: {fpr_maxentropy_EoMT*100.0}')
+        
+    print(f'AUPRC rba score EoMT: {prc_auc_rba_EoMT*100.0}')
+    print(f'FPR@TPR95 rba EoMT: {fpr_rba_EoMT*100.0}')
+
+    file.write(('    AUPRC msp score EoMT:' + str(prc_auc_msp_EoMT*100.0) + '   FPR@TPR95 msp EoMT:' + str(fpr_msp_EoMT*100.0) +
+                '\n    AUPRC maxlogit score EoMT:' + str(prc_auc_maxlogit_EoMT*100.0) + '   FPR@TPR95 maxlogit EoMT:' + str(fpr_maxlogit_EoMT*100.0) +
+                '\n    AUPRC maxentropy score EoMT:' + str(prc_auc_maxentropy_EoMT*100.0) + '   FPR@TPR95 maxentropy EoMT:' + str(fpr_maxentropy_EoMT*100.0))+
+                '\n    AUPRC rba score EoMT:' + str(prc_auc_rba_EoMT*100.0) + '   FPR@TPR95 rba EoMT:' + str(fpr_rba_EoMT*100.0))
+    
     file.close() # scriviamo su result.txt
 
 if __name__ == '__main__':
