@@ -110,9 +110,9 @@ def load_eomt(args, device):
     model = EoMT(
         encoder=encoder,
         num_classes=NUM_CLASSES,
-        num_q=100,
-        num_blocks=4,
-        masked_attn_enabled=True,
+        num_q=100, # cerca fino a 100 oggetti diversi per ogni immagine
+        num_blocks=4, # usiamo gli ultimi 4 blocchi del Transformer
+        masked_attn_enabled=True, # limita l'attenzione delle query solo alle regioni dove è stata inizialmente trovata una maschera
     )
     
     model = model.to(device)
@@ -131,15 +131,23 @@ def load_eomt(args, device):
     return model
 
 # calcola diversi punteggi anomalia
-def anomaly_scores(logits, use_rba=False):
+# più il modello è incerto ---> più probabile che ci sia un'anomalia
+def anomaly_scores(tensor, use_rba = False, is_probs = False):
     scores = []
 
-    probs = torch.softmax(logits, dim=0)
+    if is_probs:
+        # Se in input abbiamo già probabilità (EoMT), le usiamo direttamente
+        probs = tensor
+        logits_for_max = torch.log(probs + 1e-8)
+    else:
+        # Se in input abbiamo logit (ERFNet), calcoliamo la softmax
+        probs = torch.softmax(tensor, dim=0)
+        logits_for_max = tensor
 
-    msp = 1.0 - torch.max(probs, dim=0)[0]
+    msp = 1.0 - torch.max(probs, dim=0)[0] # modello incerto ---> valore alto
     scores.append(msp)
 
-    maxlogit = -torch.max(logits, dim=0)[0]
+    maxlogit = -torch.max(logits_for_max, dim=0)[0]
     scores.append(maxlogit)
 
     K = probs.shape[0]
@@ -148,7 +156,7 @@ def anomaly_scores(logits, use_rba=False):
     scores.append(entropy)
 
     if use_rba:
-        rba = -torch.tanh(logits).sum(dim=0)
+        rba = -torch.tanh(logits_for_max).sum(dim=0)
         scores.append(rba)
 
     return scores
@@ -156,10 +164,10 @@ def anomaly_scores(logits, use_rba=False):
 # Combina le predizioni finali di maschere e classi (per query) per ottenere una mappa di probabilità per-pixel sulle classi
 # Restituisce le log-probabilità per pixel (C × H × W), normalizzate sulle classi.
 def eomt_to_pixel_logits(mask_logits_per_layer, class_logits_per_layer):
-    mask_logits = mask_logits_per_layer[-1]
+    mask_logits = mask_logits_per_layer[-1] # prendiamo solo l'output finale
     class_logits = class_logits_per_layer[-1]
 
-    # porta le maschere alla risoluzione finale
+    # porta le maschere alla risoluzione finale per farle combaciare con l'immagine di input
     mask_logits = torch.nn.functional.interpolate(
         mask_logits,
         size=(512, 1024),
@@ -167,18 +175,17 @@ def eomt_to_pixel_logits(mask_logits_per_layer, class_logits_per_layer):
         align_corners=False,
     )
 
-    mask_prob = torch.sigmoid(mask_logits)
-    class_prob = torch.softmax(class_logits, dim=-1)
+    mask_prob = torch.sigmoid(mask_logits) # quanto la query copre il pixel
+    class_prob = torch.softmax(class_logits, dim=-1) # probabilità che la query appartenga ad una classe
 
-    class_prob = class_prob[:, :, :-1]
+    class_prob = class_prob[:, :, :-1] # scarta la classe no object perché vogliamo una mappa delle classi reali
 
     pixel_probs = torch.einsum("bqc,bqhw->bchw", class_prob, mask_prob)
-    pixel_probs = pixel_probs / (pixel_probs.sum(dim=1, keepdim=True) + 1e-8)
+    pixel_probs = pixel_probs / (pixel_probs.sum(dim=1, keepdim=True) + 1e-8) # normalizzazione
 
     probs = pixel_probs.squeeze(0)
-    logits = torch.log(probs + 1e-8) # DA CAMBIARE !!
 
-    return logits
+    return probs
     
 # prende in input il percorso di un'immagine e restituisce la maschera
 def load_ood_gt(path):
@@ -217,7 +224,7 @@ def load_ood_gt(path):
 # prende in input due liste: una di maschere e una di punteggi anomalia (una per immagine)
 # e restituisce AURPC e FPR95TPR
 def eval_score(ood_gts_list, anomaly_score_list):
-    ood_gts = np.array(ood_gts_list) # dim (N,H,W) con N=numero di immagini
+    ood_gts = np.array(ood_gts_list) # dim (N,H,W) con N = numero di immagini
     anomaly_scores = np.array(anomaly_score_list)
         
     ood_mask = (ood_gts == 1) # true sui pixel OoD
@@ -236,7 +243,6 @@ def eval_score(ood_gts_list, anomaly_score_list):
     fpr = fpr_at_95_tpr(val_out, val_label)
 
     return prc_auc, fpr
-
 
 def main():
     parser = ArgumentParser()
@@ -292,14 +298,14 @@ def main():
             # EoMT inference
             mask_logits_per_layer, class_logits_per_layer = model_EoMT(images)
 
-            logits_EoMT = eomt_to_pixel_logits(
+            probs_EoMT = eomt_to_pixel_logits(
                 mask_logits_per_layer,
                 class_logits_per_layer
             )
             
         # anomaly scores
-        scores_ERFNet = anomaly_scores(logits_ERFNet, use_rba=False)
-        scores_EoMT = anomaly_scores(logits_EoMT, use_rba=True)
+        scores_ERFNet = anomaly_scores(logits_ERFNet, use_rba=False, is_probs=False)
+        scores_EoMT = anomaly_scores(probs_EoMT, use_rba=True, is_probs=True)
 
         # ground truth OOD
         ood_gts = load_ood_gt(path)
@@ -366,7 +372,6 @@ def main():
         ood_gts_list,
         anomaly_score_maxentropy_list_ERFNet
     )
-    
     
     # evaluation EoMT
     prc_auc_msp_EoMT, fpr_msp_EoMT = eval_score(
