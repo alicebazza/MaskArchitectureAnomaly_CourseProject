@@ -97,7 +97,7 @@ def load_erfnet(args, device):
     return model
 
 def load_eomt(args, device):
-    eomt_weightspath = osp.join(args.loadDir, args.eomtWeights)
+    print("Loading EoMT weights from Hugging Face:", args.eomtName)
 
     print("Loading EoMT weights:", eomt_weightspath)
 
@@ -113,17 +113,22 @@ def load_eomt(args, device):
         num_q=100, # cerca fino a 100 oggetti diversi per ogni immagine
         num_blocks=4, # usiamo gli ultimi 4 blocchi del Transformer
         masked_attn_enabled=True, # limita l'attenzione delle query solo alle regioni dove è stata inizialmente trovata una maschera
+    ).to(device)
+    
+    state_dict_path = hf_hub_download(
+        repo_id=f"tue-mps/{args.eomtName}",
+        filename="pytorch_model.bin",
     )
     
-    model = model.to(device)
-    
-    if device.type == "cuda":
-        model = torch.nn.DataParallel(model)
+    checkpoint = torch.load(
+        state_dict_path,
+        map_location=device,
+        weights_only=True,
+    )
 
-    checkpoint = torch.load(eomt_weightspath, map_location=device)
     checkpoint = extract_state_dict(checkpoint)
-
     model = load_my_state_dict(model, checkpoint)
+
     model.eval()
 
     print("EoMT loaded successfully")
@@ -255,7 +260,7 @@ def main():
     )  
     parser.add_argument('--loadDir',default="../trained_models/")
     parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
-    parser.add_argument('--eomtWeights', default="eomt_pretrained.pth")
+    parser.add_argument('--eomtName', required=True)
     parser.add_argument('--loadModel', default="erfnet.py")
     parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
