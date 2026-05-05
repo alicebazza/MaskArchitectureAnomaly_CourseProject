@@ -81,7 +81,7 @@ def load_erfnet(args, device):
 
     model = ERFNet(NUM_CLASSES).to(device)
 
-    if not args.cpu:
+    if device.type == "cuda":
         model = torch.nn.DataParallel(model)
 
     checkpoint = torch.load(erfnet_weightspath, map_location=device)
@@ -117,7 +117,7 @@ def load_eomt(args, device):
     
     model = model.to(device)
     
-    if not args.cpu:
+    if device.type == "cuda":
         model = torch.nn.DataParallel(model)
 
     checkpoint = torch.load(eomt_weightspath, map_location=device)
@@ -279,7 +279,8 @@ def main():
         open('results.txt', 'w').close()
     file = open('results.txt', 'a')
     
-    device = torch.device("cpu" if args.cpu else "cuda")
+    use_cuda = (not args.cpu) and torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
     
     # carica i due modelli
     model_ERFNet = load_erfnet(args, device)
@@ -346,7 +347,6 @@ def main():
         del mask_logits_per_layer
         del class_logits_per_layer
         del logits_ERFNet
-        del logits_EoMT
         del scores_ERFNet
         del scores_EoMT
         del ood_gts
