@@ -8,7 +8,6 @@ import torch
 import random
 from PIL import Image
 import numpy as np
-from erfnet import ERFNet
 from eomt.models.eomt import EoMT
 from eomt.models.vit import ViT
 import os.path as osp
