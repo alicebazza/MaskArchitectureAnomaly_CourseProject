@@ -9,14 +9,11 @@ import random
 from PIL import Image
 import numpy as np
 from erfnet import ERFNet
-from eomt.models.eomt import EoMT
-from eomt.models.vit import ViT
 import os.path as osp
 from argparse import ArgumentParser
 from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
-from huggingface_hub import hf_hub_download
 
 seed = 42
 
