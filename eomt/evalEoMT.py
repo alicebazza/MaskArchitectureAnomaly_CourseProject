@@ -117,7 +117,7 @@ def main():
     )
     parser.add_argument('--loadDir',default="../trained_models/")
     parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
-    parser.add_argument("--eomtName", default="eomt_large_512")
+    parser.add_argument("--eomtName", default="eomt_base_640")
     parser.add_argument('--loadModel', default="erfnet.py")
     parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
