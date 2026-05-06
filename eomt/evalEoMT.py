@@ -17,10 +17,27 @@ from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curv
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 from eval.evalAnomaly import *
 from huggingface_hub import hf_hub_download
+from huggingface_hub.errors import RepositoryNotFoundError
 
 
-def load_eomt(args, device):
-    print("Loading EoMT weights from Hugging Face:", args.eomtName)
+def load_eomt(args, device, config=None):
+    # 1. Prendi il nome del modello
+    name = getattr(args, "eomtName", None)
+
+    if name is None and config is not None:
+        name = (
+            config.get("trainer", {})
+            .get("logger", {})
+            .get("init_args", {})
+            .get("name")
+        )
+
+    if name is None:
+        raise ValueError(
+            "Nome modello EoMT mancante. Passa --eomtName oppure mettilo nel config."
+        )
+
+    print("Loading EoMT weights from Hugging Face:", name)
 
     encoder = ViT(
         img_size=(512, 1024),
@@ -36,17 +53,23 @@ def load_eomt(args, device):
         masked_attn_enabled=True, # limita l'attenzione delle query solo alle regioni dove è stata inizialmente trovata una maschera
     ).to(device)
     
-    state_dict_path = hf_hub_download(
-        repo_id=f"tue-mps/{args.eomtName}",
-        filename="pytorch_model.bin",
-    )
-    
+    # 4. Scarica pesi
+    try:
+        state_dict_path = hf_hub_download(
+            repo_id=f"tue-mps/{name}",
+            filename="pytorch_model.bin",
+        )
+    except RepositoryNotFoundError:
+        raise RepositoryNotFoundError(
+            f"Repository Hugging Face non trovato: tue-mps/{name}"
+        )
+
+    # 5. Carica pesi
     checkpoint = torch.load(
         state_dict_path,
         map_location=device,
         weights_only=True,
     )
-    
     checkpoint = extract_state_dict(checkpoint)
     model = load_my_state_dict(model, checkpoint)
 
@@ -94,7 +117,7 @@ def main():
     )
     parser.add_argument('--loadDir',default="../trained_models/")
     parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
-    parser.add_argument('--eomtName', required=False)
+    parser.add_argument("--eomtName", default=None)
     parser.add_argument('--loadModel', default="erfnet.py")
     parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
