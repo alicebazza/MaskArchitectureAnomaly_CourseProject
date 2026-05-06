@@ -22,8 +22,6 @@ from huggingface_hub import hf_hub_download
 def load_eomt(args, device):
     print("Loading EoMT weights from Hugging Face:", args.eomtName)
 
-    print("Loading EoMT weights:", eomt_weightspath)
-
     encoder = ViT(
         img_size=(512, 1024),
         patch_size=14,
