@@ -34,12 +34,10 @@ def load_eomt(args, device, config=None):
             "Nome modello EoMT mancante. Passa --eomtName oppure mettilo nel config."
         )
 
-    print("Loading EoMT weights from Hugging Face:", name)
-
     encoder = ViT(
         img_size=(512, 1024),
         patch_size=14,
-        backbone_name="vit_large_patch14_reg4_dinov2",
+        backbone_name="vit_base_patch14_reg4_dinov2",
     )
 
     model = EoMT(
@@ -51,7 +49,10 @@ def load_eomt(args, device, config=None):
     ).to(device)
     
     # 4. Scarica pesi
-    state_dict_path = os.path.join("models", "checkpoints", "eomt_cityscapes.bin")
+    state_dict_path = "/content/drive/MyDrive/eomt_cityscapes.bin"
+
+    if not os.path.exists(state_dict_path):
+        raise FileNotFoundError(f"Non trovo il file su Drive! Percorso cercato: {state_dict_path}")
 
     # 5. Carica pesi
     checkpoint = torch.load(
@@ -105,7 +106,7 @@ def main():
     )
     parser.add_argument('--loadDir',default="../trained_models/")
     parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
-    parser.add_argument("--eomtName", default="cityscapes_semantic_eomt_large_1024")
+    parser.add_argument("--eomtName", default="local_drive_model")
     parser.add_argument('--loadModel', default="erfnet.py")
     parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
