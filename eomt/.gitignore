@@ -178,3 +178,12 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Machine Learning models and checkpoints
+*.bin
+*.pth
+*.onnx
+*.weights
+*.h5
+*.ckpt
+eomt/models/checkpoints/
