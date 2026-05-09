@@ -84,8 +84,6 @@ def eomt_to_pixel_logits(mask_logits_per_layer, class_logits_per_layer):
     mask_prob = torch.sigmoid(mask_logits) # quanto la query copre il pixel
     class_prob = torch.softmax(class_logits, dim=-1) # probabilità che la query appartenga ad una classe
 
-    class_prob = class_prob[:, :, :-1] # scarta la classe no object perché vogliamo una mappa delle classi reali
-
     pixel_scores = torch.einsum("bqc,bqhw->bchw", class_prob, mask_prob)
     pixel_scores = pixel_scores.squeeze(0)
 
