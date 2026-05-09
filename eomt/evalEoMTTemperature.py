@@ -133,7 +133,7 @@ def main():
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
     # ciclo su tutte le immagini
         print(path)
-                ood_gts = load_ood_gt(path)
+        ood_gts = load_ood_gt(path)
 
         # salta immagini senza pixel OoD
         if 1 not in np.unique(ood_gts):
@@ -147,20 +147,22 @@ def main():
         # costruisce il percorso completo del file dei logit salvati
 
         if os.path.exists(logits_path):
-            logits_EoMT = torch.load(logits_path, map_location="cpu")
-            # se esistono già li carica
+        logits_EoMT = torch.load(logits_path, map_location="cpu")
         else:
             images = input_transform(
-                Image.open(path).convert('RGB')).unsqueeze(0).float().to(device)
-                
+                Image.open(path).convert("RGB")
+            ).unsqueeze(0).float().to(device)
+
             with torch.no_grad():
-                result_EoMT = model_EoMT(images)
-                logits_EoMT = result_EoMT.squeeze(0)
+                mask_logits_per_layer, class_logits_per_layer = model_EoMT(images)
+                logits_EoMT = eomt_to_pixel_logits(
+                    mask_logits_per_layer,
+                    class_logits_per_layer
+                ).cpu()
 
             torch.save(logits_EoMT, logits_path)
 
-            del images
-            del result_EoMT
+        del images
 
         logits_EoMT = logits_EoMT.to(device)
         
