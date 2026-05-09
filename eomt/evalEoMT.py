@@ -44,7 +44,7 @@ def load_eomt(args, device, config=None):
         encoder=encoder,
         num_classes=NUM_CLASSES,
         num_q=100, # cerca fino a 100 oggetti diversi per ogni immagine
-        num_blocks=4, # usiamo gli ultimi 4 blocchi del Transformer
+        num_blocks=3, # usiamo gli ultimi 3 blocchi del Transformer
         masked_attn_enabled=True, # limita l'attenzione delle query solo alle regioni dove è stata inizialmente trovata una maschera
     ).to(device)
     
@@ -91,8 +91,16 @@ def eomt_to_pixel_logits(mask_logits_per_layer, class_logits_per_layer):
     pixel_probs = pixel_probs / (pixel_probs.sum(dim=1, keepdim=True) + 1e-8) # normalizzazione
 
     probs = pixel_probs.squeeze(0)
+    logits = torch.log(probs)
 
-    return probs
+    return logits
+    
+def msp_temp(lista, temp, logits):
+    scaled_logits = logits / temp
+    probs = torch.softmax(scaled_logits, dim=0)
+    anomaly_score = anomaly_scores(probs, use_rba=False, is_probs=True)[0]
+    lista.append(anomaly_score.cpu().numpy())
+    return
 
 
 def main():
@@ -120,6 +128,10 @@ def main():
     anomaly_score_maxlogit_list_EoMT = []
     anomaly_score_maxentropy_list_EoMT = []
     anomaly_score_rba_list_EoMT = []
+    anomaly_score_msp_list_EoMT_temp1 = []
+    anomaly_score_msp_list_EoMT_temp2 = []
+    anomaly_score_msp_list_EoMT_temp3 = []
+    anomaly_score_msp_list_EoMT_temp4 = []
     ood_gts_list = [] # maschere ground truth OoD
 
     if not os.path.exists('results.txt'):
@@ -142,13 +154,14 @@ def main():
             # EoMT inference
             mask_logits_per_layer, class_logits_per_layer = model_EoMT(images)
 
-            probs_EoMT = eomt_to_pixel_logits(
+            logits_EoMT = eomt_to_pixel_logits(
                 mask_logits_per_layer,
                 class_logits_per_layer
             )
+        
             
         # anomaly scores
-        scores_EoMT = anomaly_scores(probs_EoMT, use_rba=True, is_probs=True)
+        scores_EoMT = anomaly_scores(logits_EoMT, use_rba=True, is_probs=False)
 
         # ground truth OOD
         ood_gts = load_ood_gt(path)
@@ -172,6 +185,14 @@ def main():
         anomaly_score_rba_list_EoMT.append(
             scores_EoMT[3].cpu().numpy()
         )
+        
+        torch.save(logits_EoMT.cpu(), "logits.pt")
+        temperatures = [1, 0.5, 0.75, 1.1]
+            
+        msp_temp(anomaly_score_msp_list_EoMT_temp1, 1, logits_EoMT)
+        msp_temp(anomaly_score_msp_list_EoMT_temp2, 0.5, logits_EoMT)
+        msp_temp(anomaly_score_msp_list_EoMT_temp3, 0.75, logits_EoMT)
+        msp_temp(anomaly_score_msp_list_EoMT_temp4, 1.1, logits_EoMT)
         
         del images
         del mask_logits_per_layer
