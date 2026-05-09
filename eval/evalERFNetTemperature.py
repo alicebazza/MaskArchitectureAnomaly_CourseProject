@@ -71,9 +71,8 @@ def main():
     
     ood_gts_list = [] # maschere ground truth OoD
 
-    if not os.path.exists('results.txt'):
-        open('results.txt', 'w').close()
-    file = open('results.txt', 'a')
+    results_path = os.path.join(os.path.dirname(__file__), 'results.txt')
+    file = open(results_path, 'w')
     
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
