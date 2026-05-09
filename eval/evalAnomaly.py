@@ -43,10 +43,17 @@ target_transform = Compose(
     ]
 )
 
-# prende il modello già istanziato (architettura definita)
-# e lo state_dict già addestrato
-# carica manualmente i pesi dentro un modello esistente
 def load_my_state_dict(model, state_dict):
+"""
+    Carica manualmente i pesi (state_dict) in un modello PyTorch esistente.
+
+    Input:
+        model (torch.nn.Module): modello già istanziato (architettura definita)
+        state_dict (dict): dizionario dei pesi da caricare (nome -> tensore)
+
+    Output:
+        model (torch.nn.Module): modello con i pesi aggiornati
+    """
     own_state = model.state_dict()
     for name, param in state_dict.items():
         if name not in own_state:
@@ -59,8 +66,17 @@ def load_my_state_dict(model, state_dict):
             own_state[name].copy_(param)
     return model
 
-# serve a estrarre lo state_dict da un checkpoint
 def extract_state_dict(checkpoint):
+"""
+    Estrae lo state_dict da un checkpoint salvato in formati diversi.
+    Supporta checkpoint con diverse chiavi
+
+    Input:
+        checkpoint (dict): oggetto caricato da torch.load()
+
+    Output:
+        state_dict (dict): dizionario dei pesi (nome -> tensore)
+    """
     if "state_dict" in checkpoint:
         return checkpoint["state_dict"]
 
@@ -70,42 +86,67 @@ def extract_state_dict(checkpoint):
     return checkpoint
 
 
-# calcola diversi punteggi anomalia
 # più il modello è incerto ---> più probabile che ci sia un'anomalia
-def anomaly_scores(tensor, use_rba = False, is_probs = False):
+def anomaly_scores(logits, use_rba=False):
+    """
+    Calcola diverse mappe di anomaly score a partire dai logits per pixel.
+
+    Score calcolati:
+        - MSP (Maximum Softmax Probability)
+        - MaxLogit
+        - Entropy (normalizzata)
+        - RBA (opzionale)
+
+    Input:
+        logits (torch.Tensor): tensore di dimensione (C, H, W) contenente i logits
+            (output grezzo della rete, prima della softmax)
+        use_rba (bool): se True, calcola anche lo score RBA
+
+    Output:
+        scores (list of torch.Tensor): lista di mappe (H, W), una per ogni anomaly score
+    """
+
+    # probabilità tramite softmax sui logits
+    probs = torch.softmax(logits, dim=0)
+
     scores = []
 
-    if is_probs:
-        # Se in input abbiamo già probabilità (EoMT), le usiamo direttamente
-        probs = tensor
-        logits_for_max = torch.log(probs + 1e-8)
-    else:
-        # Se in input abbiamo logit (ERFNet), calcoliamo la softmax
-        probs = torch.softmax(tensor, dim=0)
-        logits_for_max = tensor
-
-    msp = 1.0 - torch.max(probs, dim=0)[0] # modello incerto ---> valore alto
+    # MSP: 1 - max probabilità
+    msp = 1.0 - torch.max(probs, dim=0)[0]
     scores.append(msp)
 
-    maxlogit = -torch.max(logits_for_max, dim=0)[0]
+    # MaxLogit: negativo del logit massimo
+    maxlogit = -torch.max(logits, dim=0)[0]
     scores.append(maxlogit)
 
+    # Entropy normalizzata
     K = probs.shape[0]
     entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=0)
     entropy = entropy / torch.log(torch.tensor(float(K), device=probs.device))
     scores.append(entropy)
 
+    # RBA opzionale
     if use_rba:
-        rba = -torch.tanh(logits_for_max).sum(dim=0)
+        rba = -torch.tanh(logits).sum(dim=0)
         scores.append(rba)
 
     return scores
    
-# prende in input il percorso di un'immagine e restituisce la maschera
+
 def load_ood_gt(path):
+"""
+    Carica la maschera ground truth (OOD) a partire dal percorso dell'immagine.
+    Costruisce automaticamente il path della maschera e applica trasformazioni
+    specifiche a seconda del dataset
+
+    Input:
+        path (str): percorso dell'immagine di input
+
+    Output:
+        ood_gts (np.ndarray): maschera OOD come array numpy
+    """
+    # parte dal path dell'immagine e trova automatica la maschera corrispondente
     pathGT = path.replace("images", "labels_masks")
-    # costruisce il percorso della maschera ground truth
-    # assume che maschera e immagine abbiano lo stesso nome ma in cartelle diverse
 
     if "RoadObstacle21" in pathGT:
         pathGT = pathGT.replace("webp", "png")
@@ -135,9 +176,23 @@ def load_ood_gt(path):
 
     return ood_gts
 
-# prende in input due liste: una di maschere e una di punteggi anomalia (una per immagine)
-# e restituisce AURPC e FPR95TPR
+
 def eval_score(ood_gts_list, anomaly_score_list):
+"""
+    Valuta le mappe di anomaly score confrontandole con le maschere ground truth OOD.
+    Estrae separatamente gli score sui pixel normali e anomali, costruisce le etichette
+    binarie corrispondenti e calcola le metriche AP/AUPRC e FPR@95TPR.
+
+    Input:
+        ood_gts_list: lista di maschere ground truth OOD,
+            con valori 0 = in-distribution e 1 = OOD
+        anomaly_score_list: lista di mappe di anomaly score,
+            una per immagine, con dimensioni compatibili con le maschere
+
+    Output:
+        prc_auc (float): Average Precision / area sotto la Precision-Recall curve
+        fpr (float): false positive rate quando il true positive rate è al 95%
+    """
     ood_gts = np.array(ood_gts_list) # dim (N,H,W) con N = numero di immagini
     anomaly_scores = np.array(anomaly_score_list)
         

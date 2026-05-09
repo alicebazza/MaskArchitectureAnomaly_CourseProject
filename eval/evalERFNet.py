@@ -9,8 +9,6 @@ import random
 from PIL import Image
 import numpy as np
 from erfnet import ERFNet
-from eomt.models.eomt import EoMT
-from eomt.models.vit import ViT
 import os.path as osp
 from argparse import ArgumentParser
 from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
@@ -91,7 +89,7 @@ def main():
             logits_ERFNet = result_ERFNet.squeeze(0)
             
         # anomaly scores
-        scores_ERFNet = anomaly_scores(logits_ERFNet, use_rba=False, is_probs=False)
+        scores_ERFNet = anomaly_scores(logits_ERFNet, use_rba=False)
 
         # ground truth OOD
         ood_gts = load_ood_gt(path)
