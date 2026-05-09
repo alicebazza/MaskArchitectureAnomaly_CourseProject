@@ -90,11 +90,6 @@ def eomt_to_pixel_logits(mask_logits_per_layer, class_logits_per_layer):
     pixel_scores = pixel_scores.squeeze(0)
 
     return pixel_scores
-    
-def msp_temp(lista, temp, logits):
-    scaled_logits = logits / temp
-    anomaly_score = anomaly_scores(scaled_logits, use_rba=False)[0]
-    lista.append(anomaly_score.cpu().numpy())
 
 
 def main():
@@ -117,12 +112,12 @@ def main():
     parser.add_argument('--cpu', action='store_true')
     args = parser.parse_args()
     
-    # liste vuote dove verranno salvati i punteggi anomalia
-    anomaly_score_msp_list_EoMT = []
-    anomaly_score_maxlogit_list_EoMT = []
-    anomaly_score_maxentropy_list_EoMT = []
-    anomaly_score_rba_list_EoMT = []
-    temperatures = [0.5, 0.75, 1.0, 1.1, 1.25, 1.5, 2.0, 3.0, 5.0]
+    logits_dir = "saved_logits_eomt"
+    # nome della cartella dove salviamo i logits
+    os.makedirs(logits_dir, exist_ok=True)
+    # crea la cartella se non esiste già
+    
+    temperatures = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 5.0]
     anomaly_score_msp_temp_EoMT = {T: [] for T in temperatures}
     ood_gts_list = [] # maschere ground truth OoD
 
@@ -139,113 +134,118 @@ def main():
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
     # ciclo su tutte le immagini
         print(path)
-        images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().to(device)
-        # images = images.permute(0,3,1,2)
-        with torch.no_grad():
+                ood_gts = load_ood_gt(path)
 
-            # EoMT inference
-            mask_logits_per_layer, class_logits_per_layer = model_EoMT(images)
-
-            logits_EoMT = eomt_to_pixel_logits(
-                mask_logits_per_layer,
-                class_logits_per_layer
-            )
-        
-            
-        # anomaly scores
-        scores_EoMT = anomaly_scores(logits_EoMT, use_rba=True)
-
-        # ground truth OOD
-        ood_gts = load_ood_gt(path)
-
-        # salta immagini senza pixel OOD
+        # salta immagini senza pixel OoD
         if 1 not in np.unique(ood_gts):
             continue
 
         ood_gts_list.append(ood_gts)
-        
-        # EoMT
-        anomaly_score_msp_list_EoMT.append(
-            scores_EoMT[0].cpu().numpy()
-        )
-        anomaly_score_maxlogit_list_EoMT.append(
-            scores_EoMT[1].cpu().numpy()
-        )
-        anomaly_score_maxentropy_list_EoMT.append(
-            scores_EoMT[2].cpu().numpy()
-        )
-        anomaly_score_rba_list_EoMT.append(
-            scores_EoMT[3].cpu().numpy()
-        )
-        
-        torch.save(logits_EoMT.cpu(), "logits.pt")
-        temperatures = [1, 0.5, 0.75, 1.1]
-            
-        msp_temp(anomaly_score_msp_list_EoMT_temp1, 1, logits_EoMT)
-        msp_temp(anomaly_score_msp_list_EoMT_temp2, 0.5, logits_EoMT)
-        msp_temp(anomaly_score_msp_list_EoMT_temp3, 0.75, logits_EoMT)
-        msp_temp(anomaly_score_msp_list_EoMT_temp4, 1.1, logits_EoMT)
-        
-        del images
-        del mask_logits_per_layer
-        del class_logits_per_layer
-        del scores_EoMT
-        del ood_gts
 
+        img_name = os.path.basename(path)
+        img_name = os.path.splitext(img_name)[0] + ".pt"
+        logits_path = os.path.join(logits_dir, img_name)
+        # costruisce il percorso completo del file dei logit salvati
+
+        if os.path.exists(logits_path):
+            logits_EoMT = torch.load(logits_path, map_location="cpu")
+            # se esistono già li carica
+        else:
+            images = input_transform(
+                Image.open(path).convert('RGB')).unsqueeze(0).float().to(device)
+                
+            with torch.no_grad():
+                result_EoMT = model_EoMT(images)
+                logits_EoMT = result_EoMT.squeeze(0)
+
+            torch.save(logits_EoMT, logits_path)
+
+            del images
+            del result_EoMT
+
+        logits_EoMT = logits_EoMT.to(device)
+        
+        # temperature scaling
+        for T in temperatures:
+            logits_temp = logits_EoMT / T
+            scores_temp = anomaly_scores(logits_temp, use_rba=False)
+
+            # MSP anomaly score con temperatura
+            anomaly_score_msp_temp_EoMT[T].append(
+                scores_temp[0].detach().cpu().numpy()
+            )
+
+            del logits_temp
+            del scores_temp
+
+        del logits_EoMT
+        del ood_gts
+        
         if device.type == "cuda":
             torch.cuda.empty_cache()
-            
-    file.write( "\n")
+
+    file.write("\nEoMT temperature scaling\n")
     
-    # evaluation EoMT
-    prc_auc_msp_EoMT, fpr_msp_EoMT = eval_score(
-        ood_gts_list,
-        anomaly_score_msp_list_EoMT
-    )
+    best_T_auprc = None
+    best_auprc = -1.0
+    best_fpr_at_best_auprc = None
 
-    prc_auc_maxlogit_EoMT, fpr_maxlogit_EoMT = eval_score(
-        ood_gts_list,
-        anomaly_score_maxlogit_list_EoMT
-    )
+    best_T_fpr = None
+    best_fpr = float("inf")
+    best_auprc_at_best_fpr = None
 
-    prc_auc_maxentropy_EoMT, fpr_maxentropy_EoMT = eval_score(
-        ood_gts_list,
-        anomaly_score_maxentropy_list_EoMT
-    )
+    for T in temperatures:
+        prc_auc_msp, fpr_msp = eval_score(
+            ood_gts_list,
+            anomaly_score_msp_temp_EoMT[T]
+        )
 
-    prc_auc_rba_EoMT, fpr_rba_EoMT = eval_score(
-        ood_gts_list,
-        anomaly_score_rba_list_EoMT
-    )
+        print(f"T={T}: AUPRC MSP EoMT: {prc_auc_msp * 100.0}")
+        print(f"T={T}: FPR@TPR95 MSP EoMT: {fpr_msp * 100.0}")
+
+        file.write(
+            f"T={T}: AUPRC MSP EoMT: {prc_auc_msp * 100.0} "
+            f"FPR@TPR95 MSP EoMT: {fpr_msp * 100.0}\n"
+        )
+
+        # migliore secondo AUPRC: più alto è meglio
+        if prc_auc_msp > best_auprc:
+            best_auprc = prc_auc_msp
+            best_fpr_at_best_auprc = fpr_msp
+            best_T_auprc = T
+
+        # migliore secondo FPR95: più basso è meglio
+        if fpr_msp < best_fpr:
+            best_fpr = fpr_msp
+            best_auprc_at_best_fpr = prc_auc_msp
+            best_T_fpr = T
     
-    # stampa EoMT
-    print(f"AUPRC msp score EoMT: {prc_auc_msp_EoMT * 100.0}")
-    print(f"FPR@TPR95 msp EoMT: {fpr_msp_EoMT * 100.0}")
+    print("\nBest temperature according to AUPRC")
+    print(f"Best T AUPRC: {best_T_auprc}")
+    print(f"Best AUPRC: {best_auprc * 100.0}")
+    print(f"Corresponding FPR@TPR95: {best_fpr_at_best_auprc * 100.0}")
 
-    print(f"AUPRC maxlogit score EoMT: {prc_auc_maxlogit_EoMT * 100.0}")
-    print(f"FPR@TPR95 maxlogit EoMT: {fpr_maxlogit_EoMT * 100.0}")
+    print("\nBest temperature according to FPR@TPR95")
+    print(f"Best T FPR95: {best_T_fpr}")
+    print(f"Best FPR@TPR95: {best_fpr * 100.0}")
+    print(f"Corresponding AUPRC: {best_auprc_at_best_fpr * 100.0}")
 
-    print(f"AUPRC maxentropy score EoMT: {prc_auc_maxentropy_EoMT * 100.0}")
-    print(f"FPR@TPR95 maxentropy EoMT: {fpr_maxentropy_EoMT * 100.0}")
-
-    print(f"AUPRC rba score EoMT: {prc_auc_rba_EoMT * 100.0}")
-    print(f"FPR@TPR95 rba EoMT: {fpr_rba_EoMT * 100.0}")
-    
     file.write(
-        "EoMT\n"
-        f"AUPRC msp score EoMT: {prc_auc_msp_EoMT * 100.0} "
-        f"FPR@TPR95 msp EoMT: {fpr_msp_EoMT * 100.0}\n"
-        f"AUPRC maxlogit score EoMT: {prc_auc_maxlogit_EoMT * 100.0} "
-        f"FPR@TPR95 maxlogit EoMT: {fpr_maxlogit_EoMT * 100.0}\n"
-        f"AUPRC maxentropy score EoMT: {prc_auc_maxentropy_EoMT * 100.0} "
-        f"FPR@TPR95 maxentropy EoMT: {fpr_maxentropy_EoMT * 100.0}\n"
-        f"AUPRC rba score EoMT: {prc_auc_rba_EoMT * 100.0} "
-        f"FPR@TPR95 rba EoMT: {fpr_rba_EoMT * 100.0}\n"
+        "\nBest temperature according to AUPRC\n"
+        f"Best T AUPRC: {best_T_auprc}\n"
+        f"Best AUPRC: {best_auprc * 100.0}\n"
+        f"Corresponding FPR@TPR95: {best_fpr_at_best_auprc * 100.0}\n\n"
     )
-    
-    file.close() # scriviamo su result.txt
+
+    file.write(
+        "Best temperature according to FPR@TPR95\n"
+        f"Best T FPR95: {best_T_fpr}\n"
+        f"Best FPR@TPR95: {best_fpr * 100.0}\n"
+        f"Corresponding AUPRC: {best_auprc_at_best_fpr * 100.0}\n\n"
+    )
+
+    file.close()
+
 
 if __name__ == '__main__':
     main()
-        
-    

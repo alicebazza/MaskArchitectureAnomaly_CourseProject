@@ -91,11 +91,6 @@ def eomt_to_pixel_logits(mask_logits_per_layer, class_logits_per_layer):
 
     return pixel_scores
     
-def msp_temp(lista, temp, logits):
-    scaled_logits = logits / temp
-    anomaly_score = anomaly_scores(scaled_logits, use_rba=False)[0]
-    lista.append(anomaly_score.cpu().numpy())
-
 
 def main():
     parser = ArgumentParser()
@@ -122,8 +117,6 @@ def main():
     anomaly_score_maxlogit_list_EoMT = []
     anomaly_score_maxentropy_list_EoMT = []
     anomaly_score_rba_list_EoMT = []
-    temperatures = [0.5, 0.75, 1.0, 1.1, 1.25, 1.5, 2.0, 3.0, 5.0]
-    anomaly_score_msp_temp_EoMT = {T: [] for T in temperatures}
     ood_gts_list = [] # maschere ground truth OoD
 
     if not os.path.exists('results.txt'):
@@ -177,14 +170,6 @@ def main():
         anomaly_score_rba_list_EoMT.append(
             scores_EoMT[3].cpu().numpy()
         )
-        
-        torch.save(logits_EoMT.cpu(), "logits.pt")
-        temperatures = [1, 0.5, 0.75, 1.1]
-            
-        msp_temp(anomaly_score_msp_list_EoMT_temp1, 1, logits_EoMT)
-        msp_temp(anomaly_score_msp_list_EoMT_temp2, 0.5, logits_EoMT)
-        msp_temp(anomaly_score_msp_list_EoMT_temp3, 0.75, logits_EoMT)
-        msp_temp(anomaly_score_msp_list_EoMT_temp4, 1.1, logits_EoMT)
         
         del images
         del mask_logits_per_layer

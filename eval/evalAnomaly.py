@@ -44,7 +44,7 @@ target_transform = Compose(
 )
 
 def load_my_state_dict(model, state_dict):
-"""
+    """
     Carica manualmente i pesi (state_dict) in un modello PyTorch esistente.
 
     Input:
@@ -67,7 +67,7 @@ def load_my_state_dict(model, state_dict):
     return model
 
 def extract_state_dict(checkpoint):
-"""
+    """
     Estrae lo state_dict da un checkpoint salvato in formati diversi.
     Supporta checkpoint con diverse chiavi
 
@@ -134,7 +134,7 @@ def anomaly_scores(logits, use_rba=False):
    
 
 def load_ood_gt(path):
-"""
+    """
     Carica la maschera ground truth (OOD) a partire dal percorso dell'immagine.
     Costruisce automaticamente il path della maschera e applica trasformazioni
     specifiche a seconda del dataset
@@ -178,7 +178,7 @@ def load_ood_gt(path):
 
 
 def eval_score(ood_gts_list, anomaly_score_list):
-"""
+    """
     Valuta le mappe di anomaly score confrontandole con le maschere ground truth OOD.
     Estrae separatamente gli score sui pixel normali e anomali, costruisce le etichette
     binarie corrispondenti e calcola le metriche AP/AUPRC e FPR@95TPR.
