@@ -34,6 +34,7 @@ def load_eomt(args, device, config=None):
             "Nome modello EoMT mancante. Passa --eomtName oppure mettilo nel config."
         )
 
+    # encoder ViT ---> estrae feature
     encoder = ViT(
         img_size=(512, 1024),
         patch_size=14,
@@ -52,7 +53,7 @@ def load_eomt(args, device, config=None):
     state_dict_path = "/content/drive/MyDrive/eomt_cityscapes.bin"
 
     if not os.path.exists(state_dict_path):
-        raise FileNotFoundError(f"Non trovo il file su Drive! Percorso cercato: {state_dict_path}")
+        raise FileNotFoundError(f"Non trovo il file su Drive Percorso cercato: {state_dict_path}")
 
     # 5. Carica pesi
     checkpoint = torch.load(
