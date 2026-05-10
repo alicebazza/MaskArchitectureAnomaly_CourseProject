@@ -8,88 +8,38 @@ import torch
 import random
 from PIL import Image
 import numpy as np
-from eomt.models.eomt import EoMT
-from eomt.models.vit import ViT
+from erfnet import ERFNet
 import os.path as osp
 from argparse import ArgumentParser
 from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
-from eval.evalAnomaly import *
+from evalAnomaly import *
 
-def load_eomt(args, device, config=None):
-    # 1. Prendi il nome del modello
-    name = getattr(args, "eomtName", None)
 
-    if name is None and config is not None:
-        name = (
-            config.get("trainer", {})
-            .get("logger", {})
-            .get("init_args", {})
-            .get("name")
-        )
+# crea modello ERFNet vuoto, carica pesi addestrati
+def load_erfnet(args, device):
+    erfnet_weightspath = osp.join(args.loadDir, args.erfnetWeights)
+    # percorso del file dei pesi
 
-    if name is None:
-        raise ValueError(
-            "Nome modello EoMT mancante. Passa --eomtName oppure mettilo nel config."
-        )
+    print("Loading ERFNet weights:", erfnet_weightspath)
 
-    encoder = ViT(
-        img_size=(512, 1024),
-        patch_size=14,
-        backbone_name="vit_base_patch14_reg4_dinov2",
-    )
+    model = ERFNet(NUM_CLASSES).to(device)
 
-    model = EoMT(
-        encoder=encoder,
-        num_classes=NUM_CLASSES,
-        num_q=100, # cerca fino a 100 oggetti diversi per ogni immagine
-        num_blocks=3, # usiamo gli ultimi 3 blocchi del Transformer
-        masked_attn_enabled=True, # limita l'attenzione delle query solo alle regioni dove è stata inizialmente trovata una maschera
-    ).to(device)
-    
-    # 4. Scarica pesi
-    state_dict_path = "/content/drive/MyDrive/eomt_cityscapes.bin"
+    if device.type == "cuda":
+        model = torch.nn.DataParallel(model)
 
-    if not os.path.exists(state_dict_path):
-        raise FileNotFoundError(f"Non trovo il file su Drive! Percorso cercato: {state_dict_path}")
-
-    # 5. Carica pesi
-    checkpoint = torch.load(
-        state_dict_path,
-        map_location=device,
-    )
+    checkpoint = torch.load(erfnet_weightspath, map_location=device)
+    # carica il file dalla memoria
     checkpoint = extract_state_dict(checkpoint)
-    model = load_my_state_dict(model, checkpoint)
+    # estrae solo i pesi del modello dal chechpoint
 
+    model = load_my_state_dict(model, checkpoint) # copia i pesi dentro il modello
     model.eval()
 
-    print("EoMT loaded successfully")
+    print("ERFNet loaded successfully")
 
     return model
-
-# Combina le predizioni finali di maschere e classi (per query) per ottenere una mappa di logit per-pixel sulle classi
-def eomt_to_pixel_logits(mask_logits_per_layer, class_logits_per_layer):
-    mask_logits = mask_logits_per_layer[-1] # prendiamo solo l'output finale
-    class_logits = class_logits_per_layer[-1]
-
-    # porta le maschere alla risoluzione finale per farle combaciare con l'immagine di input
-    mask_logits = torch.nn.functional.interpolate(
-        mask_logits,
-        size=(512, 1024),
-        mode="bilinear",
-        align_corners=False,
-    )
-
-    mask_prob = torch.sigmoid(mask_logits) # quanto la query copre il pixel
-    class_prob = torch.softmax(class_logits, dim=-1) # probabilità che la query appartenga ad una classe
-
-    class_prob = class_prob[:, :, :-1] # scarta la classe no object perché vogliamo una mappa delle classi reali
-
-    pixel_scores = torch.einsum("bqc,bqhw->bchw", class_prob, mask_prob)
-    pixel_scores = pixel_scores.squeeze(0)
-
-    return pixel_scores
 
 
 def main():
@@ -100,10 +50,9 @@ def main():
         nargs="+",
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
-    )
+    )  
     parser.add_argument('--loadDir',default="../trained_models/")
     parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
-    parser.add_argument("--eomtName", default="local_drive_model")
     parser.add_argument('--loadModel', default="erfnet.py")
     parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
@@ -119,13 +68,14 @@ def main():
     )
     args = parser.parse_args()
     
-    logits_dir = "saved_logits_eomt"
+    logits_dir = "saved_logits_erfnet"
     # nome della cartella dove salviamo i logits
     os.makedirs(logits_dir, exist_ok=True)
     # crea la cartella se non esiste già
     
     temperatures = args.temperatures
-    anomaly_score_msp_temp_EoMT = {T: [] for T in temperatures}
+    anomaly_score_msp_temp_ERFNet = {T: [] for T in temperatures}
+    
     ood_gts_list = [] # maschere ground truth OoD
 
     results_path = os.path.join(os.path.dirname(__file__), 'results.txt')
@@ -134,14 +84,15 @@ def main():
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     
-    # carica il modello se non siamo in modalità eval
-    model_EoMT = None
+    # carica il modello se non siamo in modalita eval
+    model_ERFNet = None
     if not args.eval_only:
-        model_EoMT = load_eomt(args, device)
+        model_ERFNet = load_erfnet(args, device)
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
     # ciclo su tutte le immagini
         print(path)
+        
         ood_gts = load_ood_gt(path)
 
         # salta immagini senza pixel OoD
@@ -156,45 +107,43 @@ def main():
         # costruisce il percorso completo del file dei logit salvati
 
         if os.path.exists(logits_path):
-        logits_EoMT = torch.load(logits_path, map_location="cpu")
+            logits_ERFNet = torch.load(logits_path, map_location="cpu")
+            # se esistono già li carica
         else:
             images = input_transform(
-                Image.open(path).convert("RGB")
-            ).unsqueeze(0).float().to(device)
-
+                Image.open(path).convert('RGB')).unsqueeze(0).float().to(device)
+                
             with torch.no_grad():
-                mask_logits_per_layer, class_logits_per_layer = model_EoMT(images)
-                logits_EoMT = eomt_to_pixel_logits(
-                    mask_logits_per_layer,
-                    class_logits_per_layer
-                ).cpu()
+                result_ERFNet = model_ERFNet(images)
+                logits_ERFNet = result_ERFNet.squeeze(0).cpu()
 
-            torch.save(logits_EoMT, logits_path)
+            torch.save(logits_ERFNet, logits_path)
 
-        del images
+            del images
+            del result_ERFNet
 
-        logits_EoMT = logits_EoMT.to(device)
+        logits_ERFNet = logits_ERFNet.to(device)
         
         # temperature scaling
         for T in temperatures:
-            logits_temp = logits_EoMT / T
+            logits_temp = logits_ERFNet / T
             scores_temp = anomaly_scores(logits_temp, use_rba=False)
 
             # MSP anomaly score con temperatura
-            anomaly_score_msp_temp_EoMT[T].append(
+            anomaly_score_msp_temp_ERFNet[T].append(
                 scores_temp[0].detach().cpu().numpy()
             )
 
             del logits_temp
             del scores_temp
 
-        del logits_EoMT
+        del logits_ERFNet
         del ood_gts
         
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
-    file.write("\nEoMT temperature scaling\n")
+    file.write("\nERFNet temperature scaling\n")
     
     best_T_auprc = None
     best_auprc = -1.0
@@ -207,15 +156,15 @@ def main():
     for T in temperatures:
         prc_auc_msp, fpr_msp = eval_score(
             ood_gts_list,
-            anomaly_score_msp_temp_EoMT[T]
+            anomaly_score_msp_temp_ERFNet[T]
         )
 
-        print(f"T={T}: AUPRC MSP EoMT: {prc_auc_msp * 100.0}")
-        print(f"T={T}: FPR@TPR95 MSP EoMT: {fpr_msp * 100.0}")
+        print(f"T={T}: AUPRC MSP ERFNet: {prc_auc_msp * 100.0}")
+        print(f"T={T}: FPR@TPR95 MSP ERFNet: {fpr_msp * 100.0}")
 
         file.write(
-            f"T={T}: AUPRC MSP EoMT: {prc_auc_msp * 100.0} "
-            f"FPR@TPR95 MSP EoMT: {fpr_msp * 100.0}\n"
+            f"T={T}: AUPRC MSP ERFNet: {prc_auc_msp * 100.0} "
+            f"FPR@TPR95 MSP ERFNet: {fpr_msp * 100.0}\n"
         )
 
         # migliore secondo AUPRC: più alto è meglio
