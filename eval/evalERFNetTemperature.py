@@ -67,13 +67,15 @@ def main():
         default=[0.5, 0.75, 1.0, 1.1,]
     )
     args = parser.parse_args()
-    
+
+    # salviamo i logits per non far ricalcolare tutto alla GPU ogni volta
     logits_dir = "saved_logits_erfnet"
     # nome della cartella dove salviamo i logits
     os.makedirs(logits_dir, exist_ok=True)
     # crea la cartella se non esiste già
     
     temperatures = args.temperatures
+    # dizionario per contenere i punteggi di anomalia per ogni temperatura
     anomaly_score_msp_temp_ERFNet = {T: [] for T in temperatures}
     
     ood_gts_list = [] # maschere ground truth OoD

@@ -110,7 +110,7 @@ def main():
             scores_ERFNet[2].cpu().numpy()
         )
 
-        
+        # eliminiamo il riferimento ad un oggetto, serve per la gestione efficiente della memoria
         del images
         del result_ERFNet
         del logits_ERFNet

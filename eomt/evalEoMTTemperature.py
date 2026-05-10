@@ -156,7 +156,7 @@ def main():
         # costruisce il percorso completo del file dei logit salvati
 
         if os.path.exists(logits_path):
-        logits_EoMT = torch.load(logits_path, map_location="cpu")
+            logits_EoMT = torch.load(logits_path, map_location="cpu")
         else:
             images = input_transform(
                 Image.open(path).convert("RGB")
