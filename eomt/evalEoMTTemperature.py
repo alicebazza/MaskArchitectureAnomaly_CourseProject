@@ -172,7 +172,7 @@ def main():
 
             torch.save(logits_EoMT, logits_path)
 
-        del images
+            del images
 
         logits_EoMT = logits_EoMT.to(device)
         
