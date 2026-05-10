@@ -59,6 +59,13 @@ def main():
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
+    parser.add_argument('--eval-only', action='store_true')
+    parser.add_argument(
+        "--temperatures",
+        type=float,
+        nargs="+",
+        default=[0.5, 0.75, 1.0, 1.1,]
+    )
     args = parser.parse_args()
     
     logits_dir = "saved_logits_erfnet"
@@ -66,7 +73,7 @@ def main():
     os.makedirs(logits_dir, exist_ok=True)
     # crea la cartella se non esiste già
     
-    temperatures = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 5.0]
+    temperatures = args.temperatures
     anomaly_score_msp_temp_ERFNet = {T: [] for T in temperatures}
     
     ood_gts_list = [] # maschere ground truth OoD
@@ -77,8 +84,10 @@ def main():
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     
-    # carica il modello modelli
-    model_ERFNet = load_erfnet(args, device)
+    # carica il modello se non siamo in modalita eval
+    model_ERFNet = None
+    if not args.eval_only:
+        model_ERFNet = load_erfnet(args, device)
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
     # ciclo su tutte le immagini
@@ -106,7 +115,7 @@ def main():
                 
             with torch.no_grad():
                 result_ERFNet = model_ERFNet(images)
-                logits_ERFNet = result_ERFNet.squeeze(0)
+                logits_ERFNet = result_ERFNet.squeeze(0).cpu()
 
             torch.save(logits_ERFNet, logits_path)
 
