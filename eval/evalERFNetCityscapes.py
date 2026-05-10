@@ -40,6 +40,120 @@ def load_erfnet(args, device):
     print("ERFNet loaded successfully")
 
     return model
+    
+# per una classificazione con K classi, la confuzion_matrix è una matrice KxK
+# righe -> classi reali, colonne -> classi predette
+# elemento (i,j) -> numero di esempi nella classe reale i predetti come j
+def compute_miou(confusion_matrix):
+    intersection = np.diag(confusion_matrix) # true positive per classe
+
+    gt_pixels = confusion_matrix.sum(axis=1)
+    # numero totale di elementi veri per ciascuna classe
+    pred_pixels = confusion_matrix.sum(axis=0)
+    # numero totale di elementi predetti per ciascuna classe
+
+    union = gt_pixels + pred_pixels - intersection
+
+    iou = intersection / np.maximum(union, 1)
+    miou = np.mean(iou)
+
+    return miou, iou
+    
+def update_confusion_matrix(confusion_matrix, gt, pred, num_classes):
+    valid = gt != 255
+
+    gt_valid = gt[valid]
+    pred_valid = pred[valid]
+
+    valid_classes = (gt_valid >= 0) & (gt_valid < num_classes) & \
+                    (pred_valid >= 0) & (pred_valid < num_classes)
+
+    gt_valid = gt_valid[valid_classes]
+    pred_valid = pred_valid[valid_classes]
+
+    indices = num_classes * gt_valid + pred_valid
+    cm = np.bincount(indices, minlength=num_classes ** 2)
+    cm = cm.reshape(num_classes, num_classes)
+
+    confusion_matrix += cm
+    
+def evaluate_cityscapes_miou(model, args, device):
+    num_classes = NUM_CLASSES
+
+    confusion_matrix = np.zeros((num_classes, num_classes), dtype=np.int64)
+
+    image_paths = sorted(glob.glob(
+        os.path.join(
+            args.datadir,
+            "leftImg8bit",
+            "val",
+            "*",
+            "*_leftImg8bit.png"
+        )
+    ))
+
+    print("Number of Cityscapes val images:", len(image_paths))
+
+    if len(image_paths) == 0:
+        raise RuntimeError("No Cityscapes validation images found. Check --datadir.")
+        
+    for idx, img_path in enumerate(image_paths):
+        print(f"[{idx + 1}/{len(image_paths)}] {img_path}")
+
+        gt_path = img_path.replace("leftImg8bit", "gtFine")
+        gt_path = gt_path.replace("_leftImg8bit.png", "_gtFine_trainIds.png")
+
+        if not os.path.exists(gt_path):
+            raise RuntimeError(f"Ground truth not found: {gt_path}")
+
+        image = Image.open(img_path).convert("RGB")
+        gt = np.array(Image.open(gt_path))
+
+        x = input_transform(image).unsqueeze(0).float().to(device)
+
+        with torch.no_grad():
+            logits = model(x)
+
+        logits = logits.squeeze(0)
+        pred = torch.argmax(logits, dim=0).cpu().numpy()
+
+        if pred.shape != gt.shape:
+            pred = cv2.resize(
+                pred.astype(np.uint8),
+                (gt.shape[1], gt.shape[0]),
+                interpolation=cv2.INTER_NEAREST
+            )
+
+        update_confusion_matrix(confusion_matrix, gt, pred, num_classes)
+
+        del x, logits, pred, gt
+
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+
+    miou, iou = compute_miou(confusion_matrix)
+    print("\n==============================")
+    print("Cityscapes validation results")
+    print("==============================")
+    print(f"mIoU: {miou * 100.0:.2f}")
+
+    print("\nPer-class IoU:")
+    for c, class_iou in enumerate(iou):
+        print(f"Class {c}: {class_iou * 100.0:.2f}")
+
+    results_path = os.path.join(os.path.dirname(__file__), "results_cityscapes_miou.txt")
+
+    with open(results_path, "w") as f:
+        f.write("Cityscapes validation results\n")
+        f.write(f"mIoU: {miou * 100.0:.2f}\n\n")
+        f.write("Per-class IoU:\n")
+
+        for c, class_iou in enumerate(iou):
+            f.write(f"Class {c}: {class_iou * 100.0:.2f}\n")
+
+    print(f"\nResults saved to: {results_path}")
+
+
 
 
 def main():
@@ -59,151 +173,10 @@ def main():
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
-    parser.add_argument('--eval-only', action='store_true')
-    parser.add_argument(
-        "--temperatures",
-        type=float,
-        nargs="+",
-        default=[0.5, 0.75, 1.0, 1.1,]
-    )
     args = parser.parse_args()
     
-    logits_dir = "saved_logits_erfnet"
-    # nome della cartella dove salviamo i logits
-    os.makedirs(logits_dir, exist_ok=True)
-    # crea la cartella se non esiste già
-    
-    temperatures = args.temperatures
-    anomaly_score_msp_temp_ERFNet = {T: [] for T in temperatures}
-    
-    ood_gts_list = [] # maschere ground truth OoD
-
-    results_path = os.path.join(os.path.dirname(__file__), 'results.txt')
-    file = open(results_path, 'w')
-    
-    use_cuda = (not args.cpu) and torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-    
-    # carica il modello se non siamo in modalita eval
-    model_ERFNet = None
-    if not args.eval_only:
-        model_ERFNet = load_erfnet(args, device)
-    
-    for path in glob.glob(os.path.expanduser(str(args.input[0]))):
-    # ciclo su tutte le immagini
-        print(path)
-        
-        ood_gts = load_ood_gt(path)
-
-        # salta immagini senza pixel OoD
-        if 1 not in np.unique(ood_gts):
-            continue
-
-        ood_gts_list.append(ood_gts)
-
-        img_name = os.path.basename(path)
-        img_name = os.path.splitext(img_name)[0] + ".pt"
-        logits_path = os.path.join(logits_dir, img_name)
-        # costruisce il percorso completo del file dei logit salvati
-
-        if os.path.exists(logits_path):
-            logits_ERFNet = torch.load(logits_path, map_location="cpu")
-            # se esistono già li carica
-        else:
-            images = input_transform(
-                Image.open(path).convert('RGB')).unsqueeze(0).float().to(device)
-                
-            with torch.no_grad():
-                result_ERFNet = model_ERFNet(images)
-                logits_ERFNet = result_ERFNet.squeeze(0).cpu()
-
-            torch.save(logits_ERFNet, logits_path)
-
-            del images
-            del result_ERFNet
-
-        logits_ERFNet = logits_ERFNet.to(device)
-        
-        # temperature scaling
-        for T in temperatures:
-            logits_temp = logits_ERFNet / T
-            scores_temp = anomaly_scores(logits_temp, use_rba=False)
-
-            # MSP anomaly score con temperatura
-            anomaly_score_msp_temp_ERFNet[T].append(
-                scores_temp[0].detach().cpu().numpy()
-            )
-
-            del logits_temp
-            del scores_temp
-
-        del logits_ERFNet
-        del ood_gts
-        
-        if device.type == "cuda":
-            torch.cuda.empty_cache()
-
-    file.write("\nERFNet temperature scaling\n")
-    
-    best_T_auprc = None
-    best_auprc = -1.0
-    best_fpr_at_best_auprc = None
-
-    best_T_fpr = None
-    best_fpr = float("inf")
-    best_auprc_at_best_fpr = None
-
-    for T in temperatures:
-        prc_auc_msp, fpr_msp = eval_score(
-            ood_gts_list,
-            anomaly_score_msp_temp_ERFNet[T]
-        )
-
-        print(f"T={T}: AUPRC MSP ERFNet: {prc_auc_msp * 100.0}")
-        print(f"T={T}: FPR@TPR95 MSP ERFNet: {fpr_msp * 100.0}")
-
-        file.write(
-            f"T={T}: AUPRC MSP ERFNet: {prc_auc_msp * 100.0} "
-            f"FPR@TPR95 MSP ERFNet: {fpr_msp * 100.0}\n"
-        )
-
-        # migliore secondo AUPRC: più alto è meglio
-        if prc_auc_msp > best_auprc:
-            best_auprc = prc_auc_msp
-            best_fpr_at_best_auprc = fpr_msp
-            best_T_auprc = T
-
-        # migliore secondo FPR95: più basso è meglio
-        if fpr_msp < best_fpr:
-            best_fpr = fpr_msp
-            best_auprc_at_best_fpr = prc_auc_msp
-            best_T_fpr = T
-    
-    print("\nBest temperature according to AUPRC")
-    print(f"Best T AUPRC: {best_T_auprc}")
-    print(f"Best AUPRC: {best_auprc * 100.0}")
-    print(f"Corresponding FPR@TPR95: {best_fpr_at_best_auprc * 100.0}")
-
-    print("\nBest temperature according to FPR@TPR95")
-    print(f"Best T FPR95: {best_T_fpr}")
-    print(f"Best FPR@TPR95: {best_fpr * 100.0}")
-    print(f"Corresponding AUPRC: {best_auprc_at_best_fpr * 100.0}")
-
-    file.write(
-        "\nBest temperature according to AUPRC\n"
-        f"Best T AUPRC: {best_T_auprc}\n"
-        f"Best AUPRC: {best_auprc * 100.0}\n"
-        f"Corresponding FPR@TPR95: {best_fpr_at_best_auprc * 100.0}\n\n"
-    )
-
-    file.write(
-        "Best temperature according to FPR@TPR95\n"
-        f"Best T FPR95: {best_T_fpr}\n"
-        f"Best FPR@TPR95: {best_fpr * 100.0}\n"
-        f"Corresponding AUPRC: {best_auprc_at_best_fpr * 100.0}\n\n"
-    )
-
-    file.close()
+    model = load_erfnet(args, device)
+    evaluate_cityscapes_miou(model, args, device)
 
 
 if __name__ == '__main__':
