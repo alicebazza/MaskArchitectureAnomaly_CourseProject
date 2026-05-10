@@ -54,32 +54,41 @@ def compute_miou(confusion_matrix):
 
     union = gt_pixels + pred_pixels - intersection
 
-    iou = intersection / np.maximum(union, 1)
+    iou = intersection / np.maximum(union, 1) # evitiamo la divisione per 0
     miou = np.mean(iou)
 
     return miou, iou
     
 def update_confusion_matrix(confusion_matrix, gt, pred, num_classes):
+
+    # valore 255 nel dataset indica "void"
     valid = gt != 255
 
+    # seleziona solo i pixel validi sia dal Ground Truth che dalla predizione
     gt_valid = gt[valid]
     pred_valid = pred[valid]
 
+    # evitare errori se ci sono valori fuori scala.
     valid_classes = (gt_valid >= 0) & (gt_valid < num_classes) & \
                     (pred_valid >= 0) & (pred_valid < num_classes)
-
     gt_valid = gt_valid[valid_classes]
     pred_valid = pred_valid[valid_classes]
 
+    # trasforma le coppie (realtà, predizione) in un singolo indice lineare --->
+    # mappa ogni combinazione possibile in una posizione univoca
     indices = num_classes * gt_valid + pred_valid
-    cm = np.bincount(indices, minlength=num_classes ** 2)
-    cm = cm.reshape(num_classes, num_classes)
 
+    # conta quante volte compare ogni indice.
+    cm = np.bincount(indices, minlength=num_classes ** 2)
+
+    # trasforma il vettore 1D di conteggi in una matrice quadrata (num_classes x num_classes).
+    cm = cm.reshape(num_classes, num_classes)
     confusion_matrix += cm
     
 def evaluate_cityscapes_miou(model, args, device):
     num_classes = NUM_CLASSES
 
+    # inizializzione della matrice di confusione
     confusion_matrix = np.zeros((num_classes, num_classes), dtype=np.int64)
 
     image_paths = sorted(glob.glob(
@@ -109,14 +118,17 @@ def evaluate_cityscapes_miou(model, args, device):
         image = Image.open(img_path).convert("RGB")
         gt = np.array(Image.open(gt_path))
 
+        # immagine trasformata in un tensore
         x = input_transform(image).unsqueeze(0).float().to(device)
 
         with torch.no_grad():
             logits = model(x)
 
         logits = logits.squeeze(0)
+        # viene estratta la classe più probabile per ogni pixel
         pred = torch.argmax(logits, dim=0).cpu().numpy()
 
+        # ridimensiona la predizione
         if pred.shape != gt.shape:
             pred = cv2.resize(
                 pred.astype(np.uint8),
@@ -177,7 +189,6 @@ def main():
     
     model = load_erfnet(args, device)
     evaluate_cityscapes_miou(model, args, device)
-
 
 if __name__ == '__main__':
     main()
