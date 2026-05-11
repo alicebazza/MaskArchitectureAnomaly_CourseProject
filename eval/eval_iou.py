@@ -23,8 +23,9 @@ from erfnet import ERFNet
 from transform import Relabel, ToLabel, Colorize
 from iouEval import iouEval, getColorEntry
 
+# configurazione e trasformazione dei dati
 NUM_CHANNELS = 3
-NUM_CLASSES = 20
+NUM_CLASSES = 20 # numero di categorie di oggetti che il modello può riconoscere
 
 image_transform = ToPILImage()
 input_transform_cityscapes = Compose([
@@ -34,7 +35,7 @@ input_transform_cityscapes = Compose([
 target_transform_cityscapes = Compose([
     Resize(512, Image.NEAREST),
     ToLabel(),
-    Relabel(255, 19),   #ignore label to 19
+    Relabel(255, 19),   # in Cityscapes le aree non classificate sono marcate con il valore 255 ---> rimappate alla classe 19
 ])
 
 def main(args):
@@ -51,7 +52,8 @@ def main(args):
     if (not args.cpu):
         model = torch.nn.DataParallel(model).cuda()
 
-    def load_my_state_dict(model, state_dict):  #custom function to load model when not all dict elements
+# funzione per risolvere problemi di compatibilità durante il caricamento dei pesi
+    def load_my_state_dict(model, state_dict):
         own_state = model.state_dict()
         for name, param in state_dict.items():
             if name not in own_state:
@@ -76,7 +78,7 @@ def main(args):
 
     loader = DataLoader(cityscapes(args.datadir, input_transform_cityscapes, target_transform_cityscapes, subset=args.subset), num_workers=args.num_workers, batch_size=args.batch_size, shuffle=False)
 
-
+    # fase di validazione e valutazione metrica
     iouEvalVal = iouEval(NUM_CLASSES)
 
     start = time.time()
@@ -87,16 +89,19 @@ def main(args):
             labels = labels.cuda()
 
         inputs = Variable(images)
+        # non calcoliamo i gradienti
         with torch.no_grad():
-            outputs = model(inputs)
+            outputs = model(inputs) # mappa di probabilità
 
+        # scegliamo la classe con il punteggio più alto per ogni singolo pixel
+        # confrontiamo la predizione del modello con la label
         iouEvalVal.addBatch(outputs.max(1)[1].unsqueeze(1).data, labels)
 
         filenameSave = filename[0].split("leftImg8bit/")[1] 
 
         print (step, filenameSave)
 
-
+    # calcolo precisione media e specifica
     iouVal, iou_classes = iouEvalVal.getIoU()
 
     iou_classes_str = []
