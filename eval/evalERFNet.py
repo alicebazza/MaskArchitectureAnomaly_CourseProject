@@ -96,6 +96,7 @@ def main():
     os.makedirs("plots", exist_ok=True)
     
     for idx, path in enumerate(glob.glob(os.path.expanduser(str(args.input[0])))):
+    print(path)
     # ciclo su tutte le immagini
         print(path)
         images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().to(device)
@@ -111,7 +112,6 @@ def main():
         
         # ===== visualization =====
         
-        """
         img_np = images.squeeze(0).cpu().permute(1,2,0).numpy()
 
         pred = torch.argmax(logits_ERFNet, dim=0).cpu().numpy()
@@ -142,7 +142,6 @@ def main():
         plt.tight_layout()
         plt.savefig(f"plots/plot_{idx}.png")
         plt.close()
-        """
         
 
         # ground truth OOD
@@ -177,6 +176,9 @@ def main():
 
 
     file.write( "\n")
+    
+    print("Numero immagini valide:", len(ood_gts_list))
+    print("MSP scores:", len(anomaly_score_msp_list_ERFNet))
 
     # evaluation ERFNet
     prc_auc_msp_ERFNet, fpr_msp_ERFNet = eval_score(
