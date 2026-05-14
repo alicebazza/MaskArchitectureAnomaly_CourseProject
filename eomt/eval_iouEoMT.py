@@ -148,7 +148,6 @@ if __name__ == '__main__':
     parser.add_argument('--loadDir', default="../trained_models/")
     parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
     parser.add_argument("--eomtName", default="local_drive_model")
-    parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
     parser.add_argument('--subset', default="val")
     parser.add_argument('--datadir', default="/content/drive/MyDrive/cityscapes/")
     parser.add_argument('--num-workers', type=int, default=4)
