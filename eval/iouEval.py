@@ -61,17 +61,17 @@ class iouEval:
             #print(x_onehot.size())
             #print(y_onehot.size())
 
-            tpmult = x_onehot * y_onehot    # true positive
-            tp = torch.sum(torch.sum(torch.sum(tpmult, dim=0, keepdim=True), dim=2, keepdim=True), dim=3, keepdim=True).squeeze()
-            fpmult = x_onehot * (1-y_onehot-ignores) # false positive
-            # sommiamo i pixel per ottenere il totale dei falsi positivi per ogni classe
-            fp = torch.sum(torch.sum(torch.sum(fpmult, dim=0, keepdim=True), dim=2, keepdim=True), dim=3, keepdim=True).squeeze()
-            fnmult = (1-x_onehot) * (y_onehot) # false negative
-            fn = torch.sum(torch.sum(torch.sum(fnmult, dim=0, keepdim=True), dim=2, keepdim=True), dim=3, keepdim=True).squeeze()
+        tpmult = x_onehot * y_onehot    # true positive
+        tp = torch.sum(torch.sum(torch.sum(tpmult, dim=0, keepdim=True), dim=2, keepdim=True), dim=3, keepdim=True).squeeze()
+        fpmult = x_onehot * (1-y_onehot-ignores) # false positive
+        # sommiamo i pixel per ottenere il totale dei falsi positivi per ogni classe
+        fp = torch.sum(torch.sum(torch.sum(fpmult, dim=0, keepdim=True), dim=2, keepdim=True), dim=3, keepdim=True).squeeze()
+        fnmult = (1-x_onehot) * (y_onehot) # false negative
+        fn = torch.sum(torch.sum(torch.sum(fnmult, dim=0, keepdim=True), dim=2, keepdim=True), dim=3, keepdim=True).squeeze()
 
-            self.tp += tp.double().cpu()
-            self.fp += fp.double().cpu()
-            self.fn += fn.double().cpu()
+        self.tp += tp.double().cpu()
+        self.fp += fp.double().cpu()
+        self.fn += fn.double().cpu()
 
     def getIoU(self):
         num = self.tp  # numeratore: i pixel correttamente identificati
