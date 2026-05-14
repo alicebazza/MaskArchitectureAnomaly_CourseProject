@@ -27,17 +27,20 @@ from eval.evalAnomaly import *
 
 # configurazione e trasformazione dei dati
 NUM_CHANNELS = 3
-NUM_CLASSES = 19 # numero di categorie di oggetti che il modello può riconoscere
+NUM_CLASSES = 20 # numero di categorie di oggetti che il modello può riconoscere
 
 image_transform = ToPILImage()
 input_transform_cityscapes = Compose([
-    Resize((1024, 1024), Image.BILINEAR),
+    Resize(512, Image.BILINEAR),
     ToTensor(),
+    Normalize(mean=[0.485, 0.456, 0.406],
+              std=[0.229, 0.224, 0.225])
 ])
 
 target_transform_cityscapes = Compose([
-    Resize((1024, 1024), Image.NEAREST),
+    Resize(512, Image.NEAREST),
     ToLabel(),
+    Relabel(255, 19),   # in Cityscapes le aree non classificate sono marcate con il valore 255 ---> rimappate alla classe 19
 ])
 
 def main(args):
@@ -53,7 +56,19 @@ def main(args):
 
     model_EoMT.eval()
 
-    loader = DataLoader(cityscapes(args.datadir, input_transform_cityscapes, target_transform_cityscapes, subset=args.subset), num_workers=args.num_workers, batch_size=args.batch_size, shuffle=False)
+    dataset_val = cityscapes(
+    args.datadir,
+    input_transform_cityscapes,
+    target_transform_cityscapes,
+    subset=args.subset
+    )
+
+    loader = DataLoader(
+        dataset_val,
+        num_workers=args.num_workers,
+        batch_size=args.batch_size,
+        shuffle=False
+    )
 
     # fase di validazione e valutazione metrica
     iouEvalVal = iouEval(NUM_CLASSES)
@@ -61,6 +76,7 @@ def main(args):
     start = time.time()
 
     for step, (images, labels, filename, filenameGt) in enumerate(loader):
+        labels = labels.long()
         if (not args.cpu):
             images = images.cuda()
             labels = labels.cuda()

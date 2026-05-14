@@ -84,18 +84,13 @@ def main(args):
         # non calcoliamo i gradienti
         with torch.no_grad():
             outputs = model_ERFNet(inputs) # mappa di probabilità
-            
-        print("LABELS:", torch.unique(labels))
-        print("PREDS:", torch.unique(outputs.max(1)[1]))
-        print(filename[0])
-        print(filenameGt[0])
+
 
         # scegliamo la classe con il punteggio più alto per ogni singolo pixel
         # confrontiamo la predizione del modello con la label
         iouEvalVal.addBatch(outputs.max(1)[1].unsqueeze(1).data, labels)
 
         filenameSave = filename[0].split("leftImg8bit/")[1] 
-
         print (step, filenameSave)
 
     # calcolo precisione media e specifica
