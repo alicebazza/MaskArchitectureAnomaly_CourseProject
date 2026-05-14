@@ -27,21 +27,6 @@ NUM_CLASSES = 20
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True
 
-# pre-processing per le immagini di input
-input_transform = Compose(
-    [
-        Resize((512, 1024), Image.BILINEAR),
-        ToTensor(),
-        # Normalize([.485, .456, .406], [.229, .224, .225]),
-    ]
-)
-
-# pre-processing maschere groud-truth
-target_transform = Compose(
-    [
-        Resize((512, 1024), Image.NEAREST),
-    ]
-)
 
 def load_my_state_dict(model, state_dict):
     """

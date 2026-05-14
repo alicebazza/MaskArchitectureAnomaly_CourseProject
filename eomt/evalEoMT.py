@@ -17,6 +17,22 @@ from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curv
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 from eval.evalAnomaly import *
 
+# pre-processing per le immagini di input
+input_transform = Compose(
+    [
+        Resize((1024, 1024), Image.BILINEAR),
+        ToTensor(),
+        # Normalize([.485, .456, .406], [.229, .224, .225]),
+    ]
+)
+
+# pre-processing maschere groud-truth
+target_transform = Compose(
+    [
+        Resize((1024, 1024), Image.NEAREST),
+    ]
+)
+
 def load_eomt(args, device, config=None):
     # 1. Prendi il nome del modello
     name = getattr(args, "eomtName", None)
