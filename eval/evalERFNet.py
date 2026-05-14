@@ -110,7 +110,8 @@ def main():
         scores_ERFNet = anomaly_scores(logits_ERFNet, use_rba=False)
         
         # ===== visualization =====
-
+        
+        """
         img_np = images.squeeze(0).cpu().permute(1,2,0).numpy()
 
         pred = torch.argmax(logits_ERFNet, dim=0).cpu().numpy()
@@ -141,6 +142,7 @@ def main():
         plt.tight_layout()
         plt.savefig(f"plots/plot_{idx}.png")
         plt.close()
+        """
         
 
         # ground truth OOD
