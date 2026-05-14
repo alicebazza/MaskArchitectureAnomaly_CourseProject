@@ -27,7 +27,7 @@ from evalAnomaly import *
 
 # configurazione e trasformazione dei dati
 NUM_CHANNELS = 3
-NUM_CLASSES = 20 # numero di categorie di oggetti che il modello può riconoscere
+NUM_CLASSES = 19 # numero di categorie di oggetti che il modello può riconoscere
 
 image_transform = ToPILImage()
 input_transform_cityscapes = Compose([
@@ -73,7 +73,6 @@ def main(args):
     start = time.time()
 
     for step, (images, labels, filename, filenameGt) in enumerate(loader):
-        print(labels.min(), labels.max(), labels.dtype)
         labels = labels.long()
         if (not args.cpu):
             images = images.cuda()
