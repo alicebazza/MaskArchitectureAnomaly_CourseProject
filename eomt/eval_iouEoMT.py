@@ -21,8 +21,8 @@ from torchvision.transforms import ToTensor, ToPILImage
 from eval.dataset import cityscapes
 from eomt.models.eomt import EoMT
 from eomt.models.vit import ViT
-from transform import Relabel, ToLabel, Colorize
-from iouEval import iouEval, getColorEntry
+from eval.transform import Relabel, ToLabel, Colorize
+from eval.iouEval import iouEval, getColorEntry
 from eval.evalAnomaly import *
 
 # configurazione e trasformazione dei dati
