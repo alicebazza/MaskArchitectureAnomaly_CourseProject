@@ -73,6 +73,8 @@ def main(args):
     start = time.time()
 
     for step, (images, labels, filename, filenameGt) in enumerate(loader):
+        print(labels.min(), labels.max(), labels.dtype)
+        labels = labels.long()
         if (not args.cpu):
             images = images.cuda()
             labels = labels.cuda()
