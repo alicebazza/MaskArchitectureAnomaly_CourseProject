@@ -19,62 +19,39 @@ from torchvision.transforms import Compose, CenterCrop, Normalize, Resize
 from torchvision.transforms import ToTensor, ToPILImage
 
 from dataset import cityscapes
-from erfnet import ERFNet
+from eomt.models.eomt import EoMT
+from eomt.models.vit import ViT
 from transform import Relabel, ToLabel, Colorize
 from iouEval import iouEval, getColorEntry
+from eval.evalAnomaly import *
 
 # configurazione e trasformazione dei dati
 NUM_CHANNELS = 3
-NUM_CLASSES = 20 # numero di categorie di oggetti che il modello può riconoscere
+NUM_CLASSES = 19 # numero di categorie di oggetti che il modello può riconoscere
 
 image_transform = ToPILImage()
 input_transform_cityscapes = Compose([
-    Resize(512, Image.BILINEAR),
+    Resize((1024, 1024), Image.BILINEAR),
     ToTensor(),
 ])
+
 target_transform_cityscapes = Compose([
-    Resize(512, Image.NEAREST),
+    Resize((1024, 1024), Image.NEAREST),
     ToLabel(),
-    Relabel(255, 19),   # in Cityscapes le aree non classificate sono marcate con il valore 255 ---> rimappate alla classe 19
 ])
 
 def main(args):
 
-    modelpath = args.loadDir + args.loadModel
-    weightspath = args.loadDir + args.loadWeights
-
-    print ("Loading model: " + modelpath)
-    print ("Loading weights: " + weightspath)
-
-    model = ERFNet(NUM_CLASSES)
-
-    #model = torch.nn.DataParallel(model)
-    if (not args.cpu):
-        model = torch.nn.DataParallel(model).cuda()
-
-# funzione per risolvere problemi di compatibilità durante il caricamento dei pesi
-    def load_my_state_dict(model, state_dict):
-        own_state = model.state_dict()
-        for name, param in state_dict.items():
-            if name not in own_state:
-                if name.startswith("module."):
-                    own_state[name.split("module.")[-1]].copy_(param)
-                else:
-                    print(name, " not loaded")
-                    continue
-            else:
-                own_state[name].copy_(param)
-        return model
-
-    model = load_my_state_dict(model, torch.load(weightspath, map_location=lambda storage, loc: storage))
-    print ("Model and weights LOADED successfully")
-
-
-    model.eval()
-
+    use_cuda = (not args.cpu) and torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+    
     if(not os.path.exists(args.datadir)):
         print ("Error: datadir could not be loaded")
+    
+    # carica il modello
+    model_EoMT = load_eomt(args, device)
 
+    model_EoMT.eval()
 
     loader = DataLoader(cityscapes(args.datadir, input_transform_cityscapes, target_transform_cityscapes, subset=args.subset), num_workers=args.num_workers, batch_size=args.batch_size, shuffle=False)
 
@@ -91,11 +68,18 @@ def main(args):
         inputs = Variable(images)
         # non calcoliamo i gradienti
         with torch.no_grad():
-            outputs = model(inputs) # mappa di probabilità
+            mask_logits_per_layer, class_logits_per_layer = model_EoMT(inputs)
+
+            logits_EoMT = eomt_to_pixel_logits(
+                mask_logits_per_layer,
+                class_logits_per_layer
+            )
 
         # scegliamo la classe con il punteggio più alto per ogni singolo pixel
         # confrontiamo la predizione del modello con la label
-        iouEvalVal.addBatch(outputs.max(1)[1].unsqueeze(1).data, labels)
+        prediction = logits_EoMT.max(0)[1].unsqueeze(0).unsqueeze(0)
+
+        iouEvalVal.addBatch(prediction.data, labels)
 
         filenameSave = filename[0].split("leftImg8bit/")[1] 
 
@@ -108,7 +92,8 @@ def main(args):
     for i in range(iou_classes.size(0)):
         iouStr = getColorEntry(iou_classes[i])+'{:0.2f}'.format(iou_classes[i]*100) + '\033[0m'
         iou_classes_str.append(iouStr)
-
+    
+    """
     print("---------------------------------------")
     print("Took ", time.time()-start, "seconds")
     print("=======================================")
@@ -132,21 +117,22 @@ def main(args):
     print(iou_classes_str[15], "bus")
     print(iou_classes_str[16], "train")
     print(iou_classes_str[17], "motorcycle")
-    print(iou_classes_str[18], "bicycle")
+    print(iou_classes_str[18], "bicycle")"
     print("=======================================")
+    """
+    
     iouStr = getColorEntry(iouVal)+'{:0.2f}'.format(iouVal*100) + '\033[0m'
     print ("MEAN IoU: ", iouStr, "%")
 
 if __name__ == '__main__':
     parser = ArgumentParser()
 
-    parser.add_argument('--state')
-
-    parser.add_argument('--loadDir',default="../trained_models/")
-    parser.add_argument('--loadWeights', default="erfnet_pretrained.pth")
-    parser.add_argument('--loadModel', default="erfnet.py")
-    parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
+    parser.add_argument('--loadDir', default="../trained_models/")
+    parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
+    parser.add_argument("--eomtName", default="local_drive_model")
     parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
+    parser.add_argument('--subset', default="val")
+    parser.add_argument('--datadir', default="/content/drive/MyDrive/cityscapes/")
     parser.add_argument('--num-workers', type=int, default=4)
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')

@@ -36,7 +36,7 @@ def load_eomt(args, device, config=None):
 
     # encoder ViT ---> estrae feature
     encoder = ViT(
-        img_size=(512, 1024),
+        img_size=(1024, 1024),
         patch_size=14,
         backbone_name="vit_base_patch14_reg4_dinov2",
     )
@@ -77,7 +77,7 @@ def eomt_to_pixel_logits(mask_logits_per_layer, class_logits_per_layer):
     # porta le maschere alla risoluzione finale per farle combaciare con l'immagine di input
     mask_logits = torch.nn.functional.interpolate(
         mask_logits,
-        size=(512, 1024),
+        size=(1024, 1024),
         mode="bilinear",
         align_corners=False,
     )

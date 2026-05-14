@@ -80,6 +80,7 @@ class iouEval:
 
     # ritorna: 1. La media di tutte le classi (mIoU), 2. Il vettore con i punteggi singoli
     return torch.mean(iou), iou
+    
 # Class for colors
 class colors:
     RED       = '\033[31;1m'

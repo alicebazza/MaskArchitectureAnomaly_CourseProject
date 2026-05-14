@@ -116,7 +116,7 @@ def main():
                 Image.open(path).convert('RGB')).unsqueeze(0).float().to(device)
                 
             with torch.no_grad():
-                result_ERFNet = model_ERFNet(images)
+                result_ERFNet = result_ERFNet[:, :-1, :, :]
                 logits_ERFNet = result_ERFNet.squeeze(0).cpu()
 
             torch.save(logits_ERFNet, logits_path)

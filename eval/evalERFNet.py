@@ -74,7 +74,7 @@ def main():
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     
-    # carica il modello modelli
+    # carica il modello
     model_ERFNet = load_erfnet(args, device)
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
@@ -84,7 +84,7 @@ def main():
         # images = images.permute(0,3,1,2)
         with torch.no_grad():
             # ERFNet inference
-            result_ERFNet = model_ERFNet(images)
+            result_ERFNet = result_ERFNet[:, :-1, :, :] # togliamo no object
             logits_ERFNet = result_ERFNet.squeeze(0)
             
         # anomaly scores

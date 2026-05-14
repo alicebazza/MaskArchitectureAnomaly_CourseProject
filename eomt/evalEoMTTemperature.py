@@ -35,7 +35,7 @@ def load_eomt(args, device, config=None):
         )
 
     encoder = ViT(
-        img_size=(512, 1024),
+        img_size=(1024, 1024),
         patch_size=14,
         backbone_name="vit_base_patch14_reg4_dinov2",
     )
@@ -76,21 +76,18 @@ def eomt_to_pixel_logits(mask_logits_per_layer, class_logits_per_layer):
     # porta le maschere alla risoluzione finale per farle combaciare con l'immagine di input
     mask_logits = torch.nn.functional.interpolate(
         mask_logits,
-        size=(512, 1024),
+        size=(1024, 1024),
         mode="bilinear",
         align_corners=False,
     )
 
     mask_prob = torch.sigmoid(mask_logits) # quanto la query copre il pixel
+    class_prob = torch.softmax(class_logits, dim=-1)[..., :-1] # probabilità che la query appartenga ad una classe
 
-    # logit delle classi senza softmax
-    # scartiamo l'ultima colonna che corrisponde a no-object
-    class_logits_raw = class_logits[:, :, :-1]
+    pixel_scores = torch.einsum("bqc,bqhw->bchw", class_prob, mask_prob)
+    pixel_scores = pixel_scores.squeeze(0)
 
-    # combiniamo i logit con le maschere
-    pixel_logits = torch.einsum("bqc,bqhw->bchw", class_logits_raw, mask_prob)
-
-    return pixel_logits.squeeze(0)
+    return pixel_scores
 
 
 def main():
