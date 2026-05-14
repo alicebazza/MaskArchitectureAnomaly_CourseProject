@@ -74,6 +74,14 @@ class cityscapes(Dataset):
 
         self.filenamesGt = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(self.labels_root)) for f in fn if is_label(f)]
         self.filenamesGt.sort()
+        
+        print("images:", len(self.filenames))
+        print("GT:", len(self.filenamesGt))
+        print("first image:", self.filenames[:3])
+        print("first GT:", self.filenamesGt[:3])
+
+        assert len(self.filenames) == len(self.filenamesGt), \
+            f"Mismatch: {len(self.filenames)} images, {len(self.filenamesGt)} GT"
 
         self.input_transform = input_transform
         self.target_transform = target_transform
