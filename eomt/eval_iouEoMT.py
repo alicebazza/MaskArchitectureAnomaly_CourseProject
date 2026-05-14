@@ -41,7 +41,7 @@ input_transform_cityscapes = Compose([
 ])
 
 target_transform_cityscapes = Compose([
-    Resize(512, Image.NEAREST),
+    Resize((1024, 1024), Image.NEAREST),
     ToLabel(),
     Relabel(255, 19),   # in Cityscapes le aree non classificate sono marcate con il valore 255 ---> rimappate alla classe 19
 ])
