@@ -89,7 +89,6 @@ def main(args):
         print("PREDS:", torch.unique(outputs.max(1)[1]))
         print(filename[0])
         print(filenameGt[0])
-        break
 
         # scegliamo la classe con il punteggio più alto per ogni singolo pixel
         # confrontiamo la predizione del modello con la label
