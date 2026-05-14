@@ -53,7 +53,21 @@ def main(args):
 
     model_ERFNet.eval()
 
-    loader = DataLoader(cityscapes(args.datadir, input_transform_cityscapes, target_transform_cityscapes, subset=args.subset), num_workers=args.num_workers, batch_size=args.batch_size, shuffle=False)
+    dataset_val = cityscapes(
+    args.datadir,
+    input_transform_cityscapes,
+    target_transform_cityscapes,
+    subset=args.subset
+    )
+
+    print("Dataset length:", len(dataset_val))
+
+    loader = DataLoader(
+        dataset_val,
+        num_workers=args.num_workers,
+        batch_size=args.batch_size,
+        shuffle=False
+    )
 
     # fase di validazione e valutazione metrica
     iouEvalVal = iouEval(NUM_CLASSES)
