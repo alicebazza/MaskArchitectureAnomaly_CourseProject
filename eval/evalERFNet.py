@@ -84,6 +84,7 @@ def main():
         # images = images.permute(0,3,1,2)
         with torch.no_grad():
             # ERFNet inference
+            result_ERFNet = model_ERFNet(images)
             result_ERFNet = result_ERFNet[:, :-1, :, :] # togliamo no object
             logits_ERFNet = result_ERFNet.squeeze(0)
             
