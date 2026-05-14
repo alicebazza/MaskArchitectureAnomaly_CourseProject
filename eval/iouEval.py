@@ -74,13 +74,13 @@ class iouEval:
             self.fn += fn.double().cpu()
 
     def getIoU(self):
-    num = self.tp  # numeratore: i pixel correttamente identificati
-    # denominatore: unione di TP, FP e FN.
-    den = self.tp + self.fp + self.fn + 1e-15
-    iou = num / den # calcola il punteggio per ogni singola classe
+        num = self.tp  # numeratore: i pixel correttamente identificati
+        # denominatore: unione di TP, FP e FN.
+        den = self.tp + self.fp + self.fn + 1e-15
+        iou = num / den # calcola il punteggio per ogni singola classe
 
-    # ritorna: 1. La media di tutte le classi (mIoU), 2. Il vettore con i punteggi singoli
-    return torch.mean(iou), iou
+        # ritorna: 1. La media di tutte le classi (mIoU), 2. Il vettore con i punteggi singoli
+        return torch.mean(iou), iou
     
 # Class for colors
 class colors:
