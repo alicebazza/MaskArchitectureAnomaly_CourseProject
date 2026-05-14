@@ -33,6 +33,8 @@ image_transform = ToPILImage()
 input_transform_cityscapes = Compose([
     Resize(512, Image.BILINEAR),
     ToTensor(),
+    Normalize(mean=[0.485, 0.456, 0.406],
+              std=[0.229, 0.224, 0.225])
 ])
 target_transform_cityscapes = Compose([
     Resize(512, Image.NEAREST),
