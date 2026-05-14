@@ -96,7 +96,7 @@ def main():
     os.makedirs("plots", exist_ok=True)
     
     for idx, path in enumerate(glob.glob(os.path.expanduser(str(args.input[0])))):
-    print(path)
+        print(path)
     # ciclo su tutte le immagini
         print(path)
         images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().to(device)
