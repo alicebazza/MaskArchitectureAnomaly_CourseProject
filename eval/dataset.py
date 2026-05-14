@@ -19,7 +19,7 @@ def is_image(filename):
     return any(filename.endswith(ext) for ext in EXTENSIONS)
 
 def is_label(filename):
-    return filename.endswith("_labelTrainIds.png")
+    return filename.endswith("_gtFine_labelIds.png") or filename.endswith("_gtFine_labelTrainIds.png")
 
 def image_path(root, basename, extension):
     return os.path.join(root, f'{basename}{extension}')
