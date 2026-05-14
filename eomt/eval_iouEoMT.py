@@ -25,6 +25,7 @@ from eomt.models.eomt import EoMT
 from eomt.models.vit import ViT
 from eval.transform import Relabel, ToLabel, Colorize
 from eval.iouEval import iouEval, getColorEntry
+from evalEoMT import load_eomt
 from eval.evalAnomaly import *
 
 # configurazione e trasformazione dei dati
