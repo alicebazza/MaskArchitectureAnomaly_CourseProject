@@ -77,16 +77,17 @@ def main(args):
         if (not args.cpu):
             images = images.cuda()
             labels = labels.cuda()
-        print("LABELS:", torch.unique(labels))
-        print("PREDS:", torch.unique(outputs.max(1)[1]))
-        print(filename[0])
-        print(filenameGt[0])
-        break
 
         inputs = Variable(images)
         # non calcoliamo i gradienti
         with torch.no_grad():
             outputs = model_ERFNet(inputs) # mappa di probabilità
+            
+        print("LABELS:", torch.unique(labels))
+        print("PREDS:", torch.unique(outputs.max(1)[1]))
+        print(filename[0])
+        print(filenameGt[0])
+        break
 
         # scegliamo la classe con il punteggio più alto per ogni singolo pixel
         # confrontiamo la predizione del modello con la label
