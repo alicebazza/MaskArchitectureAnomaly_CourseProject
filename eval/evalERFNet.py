@@ -6,6 +6,7 @@ import cv2
 import glob
 import torch
 import random
+import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
 from erfnet import ERFNet
@@ -92,7 +93,9 @@ def main():
     # carica il modello
     model_ERFNet = load_erfnet(args, device)
     
-    for path in glob.glob(os.path.expanduser(str(args.input[0]))):
+    os.makedirs("plots", exist_ok=True)
+    
+    for idx, path in enumerate(glob.glob(os.path.expanduser(str(args.input[0])))):
     # ciclo su tutte le immagini
         print(path)
         images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().to(device)
@@ -105,6 +108,40 @@ def main():
             
         # anomaly scores
         scores_ERFNet = anomaly_scores(logits_ERFNet, use_rba=False)
+        
+        # ===== visualization =====
+
+        img_np = images.squeeze(0).cpu().permute(1,2,0).numpy()
+
+        pred = torch.argmax(logits_ERFNet, dim=0).cpu().numpy()
+
+        gt = load_ood_gt(path)
+
+        anom = scores_ERFNet[0].cpu().numpy()
+
+        fig, axs = plt.subplots(2, 2, figsize=(12,6))
+
+        axs[0,0].imshow(img_np)
+        axs[0,0].set_title("Input")
+        axs[0,0].axis("off")
+
+        axs[0,1].imshow(gt, cmap="gray")
+        axs[0,1].set_title("Ground Truth")
+        axs[0,1].axis("off")
+
+        axs[1,0].imshow(pred)
+        axs[1,0].set_title("Prediction")
+        axs[1,0].axis("off")
+
+        im = axs[1,1].imshow(anom, cmap="viridis")
+        axs[1,1].set_title("Anomaly Score")
+        axs[1,1].axis("off")
+
+        plt.colorbar(im, ax=axs[1,1])
+        plt.tight_layout()
+        plt.savefig(f"plots/plot_{idx}.png")
+        plt.close()
+        
 
         # ground truth OOD
         ood_gts = load_ood_gt(path)
