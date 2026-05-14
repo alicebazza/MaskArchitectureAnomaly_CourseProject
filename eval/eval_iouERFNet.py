@@ -27,7 +27,7 @@ from evalAnomaly import *
 
 # configurazione e trasformazione dei dati
 NUM_CHANNELS = 3
-NUM_CLASSES = 19 # numero di categorie di oggetti che il modello può riconoscere
+NUM_CLASSES = 20 # numero di categorie di oggetti che il modello può riconoscere
 
 image_transform = ToPILImage()
 input_transform_cityscapes = Compose([
@@ -77,6 +77,11 @@ def main(args):
         if (not args.cpu):
             images = images.cuda()
             labels = labels.cuda()
+        print("LABELS:", torch.unique(labels))
+        print("PREDS:", torch.unique(outputs.max(1)[1]))
+        print(filename[0])
+        print(filenameGt[0])
+        break
 
         inputs = Variable(images)
         # non calcoliamo i gradienti
