@@ -22,7 +22,7 @@ from dataset import cityscapes
 from erfnet import ERFNet
 from transform import Relabel, ToLabel, Colorize
 from iouEval import iouEval, getColorEntry
-from evalERFnet import load_erfnet
+from evalERFNet import load_erfnet
 from evalAnomaly import *
 
 # configurazione e trasformazione dei dati
