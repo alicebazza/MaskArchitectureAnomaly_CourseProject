@@ -9,6 +9,8 @@ import torch.nn.functional as F
 import os
 import importlib
 import time
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # per guardare sia eval che eomt
 
 from PIL import Image
 from argparse import ArgumentParser
