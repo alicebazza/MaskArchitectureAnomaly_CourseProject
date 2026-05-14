@@ -110,7 +110,7 @@ def main():
     # ciclo su tutte le immagini
         print(path)
         
-        ood_gts = load_ood_gt(path)
+        ood_gts = load_ood_gt(path, size=(512, 1024))
 
         # salta immagini senza pixel OoD
         if 1 not in np.unique(ood_gts):

@@ -96,7 +96,6 @@ def main():
     os.makedirs("plots", exist_ok=True)
     
     for idx, path in enumerate(glob.glob(os.path.expanduser(str(args.input[0])))):
-        print(path)
     # ciclo su tutte le immagini
         print(path)
         images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().to(device)
@@ -116,7 +115,7 @@ def main():
 
         pred = torch.argmax(logits_ERFNet, dim=0).cpu().numpy()
 
-        gt = load_ood_gt(path)
+        gt = load_ood_gt(path, size = (512,1024))
 
         anom = scores_ERFNet[0].cpu().numpy()
 
@@ -145,7 +144,7 @@ def main():
         
 
         # ground truth OOD
-        ood_gts = load_ood_gt(path)
+        ood_gts = load_ood_gt(path, size=(512, 1024))
 
         # salta immagini senza pixel OOD
         if 1 not in np.unique(ood_gts):

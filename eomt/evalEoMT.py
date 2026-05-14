@@ -163,7 +163,7 @@ def main():
         scores_EoMT = anomaly_scores(logits_EoMT, use_rba=True)
 
         # ground truth OOD
-        ood_gts = load_ood_gt(path)
+        ood_gts = load_ood_gt(path, size=(1024, 1024))
 
         # salta immagini senza pixel OOD
         if 1 not in np.unique(ood_gts):
