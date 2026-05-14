@@ -117,6 +117,13 @@ def main(args):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
+    parser.add_argument(
+        "--input",
+        default="/home/shyam/Mask2Former/unk-eval/RoadObstacle21/images/*.webp",
+        nargs="+",
+        help="A list of space separated input images; "
+        "or a single glob pattern such as 'directory/*.jpg'",
+    )
 
     parser.add_argument('--loadDir', default="../trained_models/")
     parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
