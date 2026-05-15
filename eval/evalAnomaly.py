@@ -118,7 +118,7 @@ def anomaly_scores(logits, use_rba=False):
     return scores
    
 
-def load_ood_gt(path):
+def load_ood_gt(path, size = None):
     """
     Carica la maschera ground truth (OOD) a partire dal percorso dell'immagine.
     Costruisce automaticamente il path della maschera e applica trasformazioni
