@@ -52,11 +52,20 @@ def main(args):
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     
-    if(not os.path.exists(args.datadir)):
-        print ("Error: datadir could not be loaded")
+    config_path = 'configs/dinov2/cityscapes/semantic/eomt_base_640.yaml'
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    state_dict_path = '/content/drive/MyDrive/eomt_cityscapes.bin'
+    
+    warnings.filterwarnings("ignore",
+        message=r".*Attribute 'network' is an instance of `nn\.Module` and is already saved during checkpointing.*",
+    )
     
     # carica il modello
-    model_EoMT = load_eomt(args, device)
+    model_EoMT = load_eomt(device, config, state_dict_path)
+    
+    if(not os.path.exists(args.datadir)):
+        print ("Error: datadir could not be loaded")
 
     model_EoMT.eval()
 

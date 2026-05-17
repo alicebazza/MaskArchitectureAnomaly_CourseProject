@@ -33,30 +33,6 @@ target_transform = Compose(
     ]
 )
 
-# crea modello ERFNet vuoto, carica pesi addestrati
-def load_erfnet(args, device):
-    erfnet_weightspath = osp.join(args.loadDir, args.erfnetWeights)
-    # percorso del file dei pesi
-
-    print("Loading ERFNet weights:", erfnet_weightspath)
-
-    model = ERFNet(NUM_CLASSES).to(device)
-
-    if device.type == "cuda":
-        model = torch.nn.DataParallel(model)
-
-    checkpoint = torch.load(erfnet_weightspath, map_location=device)
-    # carica il file dalla memoria
-    checkpoint = extract_state_dict(checkpoint)
-    # estrae solo i pesi del modello dal chechpoint
-
-    model = load_my_state_dict(model, checkpoint) # copia i pesi dentro il modello
-    model.eval()
-
-    print("ERFNet loaded successfully")
-
-    return model
-
 
 def main():
     parser = ArgumentParser()

@@ -1,18 +1,24 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import os
 import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # per guardare sia eval che eomt
-import cv2
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import glob
 import torch
 import random
 from PIL import Image
 import numpy as np
-import os.path as osp
-from argparse import ArgumentParser
-from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
-from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
+
+import yaml
+import warnings
+import importlib
+import torch.nn.functional as F
+from torch.amp import autocast
+
+from ood_metrics import fpr_at_95_tpr
+from sklearn.metrics import average_precision_score
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+
+from erfnet import ERFNet
 
 seed = 42
 
@@ -69,6 +75,111 @@ def extract_state_dict(checkpoint):
         return checkpoint["model"]
 
     return checkpoint
+    
+# crea modello ERFNet vuoto, carica pesi addestrati
+def load_erfnet(args, device):
+    erfnet_weightspath = osp.join(args.loadDir, args.erfnetWeights)
+    # percorso del file dei pesi
+
+    print("Loading ERFNet weights:", erfnet_weightspath)
+
+    model = ERFNet(NUM_CLASSES).to(device)
+
+    if device.type == "cuda":
+        model = torch.nn.DataParallel(model)
+
+    checkpoint = torch.load(erfnet_weightspath, map_location=device)
+    # carica il file dalla memoria
+    checkpoint = extract_state_dict(checkpoint)
+    # estrae solo i pesi del modello dal chechpoint
+
+    model = load_my_state_dict(model, checkpoint) # copia i pesi dentro il modello
+    model.eval()
+
+    print("ERFNet loaded successfully")
+
+    return model
+    
+# costruisce il modello a partire da una configurazione config, carica i pesi
+# salvati da state_dict_path, sposta il modello su CPU/GPU
+# e restituisce il modello pronto per inferenza
+def load_eomt(device, config, state_dict_path):
+    # Load encoder
+    encoder_cfg = config["model"]["init_args"]["network"]["init_args"]["encoder"]
+    encoder_module_name, encoder_class_name = encoder_cfg["class_path"].rsplit(".", 1)
+    encoder_cls = getattr(importlib.import_module(encoder_module_name), encoder_class_name)
+    encoder = encoder_cls(img_size=(1024, 1024), **encoder_cfg.get("init_args", {}))
+
+    # Load network
+    network_cfg = config["model"]["init_args"]["network"]
+    network_module_name, network_class_name = network_cfg["class_path"].rsplit(".", 1)
+    network_cls = getattr(importlib.import_module(network_module_name), network_class_name)
+    network_kwargs = {k: v for k, v in network_cfg["init_args"].items() if k != "encoder"}
+    network = network_cls(
+        masked_attn_enabled=False,
+        num_classes=19,
+        encoder=encoder,
+        **network_kwargs,
+    )
+
+    # Load Lightning module
+    lit_module_name, lit_class_name = config["model"]["class_path"].rsplit(".", 1)
+    lit_cls = getattr(importlib.import_module(lit_module_name), lit_class_name)
+    model_kwargs = {k: v for k, v in config["model"]["init_args"].items() if k != "network"}
+    if "stuff_classes" in config["data"].get("init_args", {}):
+        model_kwargs["stuff_classes"] = config["data"]["init_args"]["stuff_classes"]
+
+    model = (
+        lit_cls(
+            img_size=(1024, 1024),
+            num_classes=19,
+            network=network,
+            **model_kwargs,
+        )
+        .eval()
+        .to(device)
+    )
+
+    if device == 'cpu':
+        state_dict = torch.load(
+                    state_dict_path, map_location="cpu", weights_only=True
+                )
+    else:
+        state_dict = torch.load(
+                    state_dict_path, map_location=f"cuda:{0}", weights_only=True
+                )
+    model.load_state_dict(state_dict, strict=False)
+    print('Model\'s weights loaded succesfully')
+
+    return model
+    
+# Combina le predizioni finali di maschere e classi per ottenere una mappa di logit per-pixel sulle classi
+def eomt_to_pixel_logits(img, device, model):
+    with torch.no_grad(), autocast(dtype=torch.float16, device_type="cuda"):
+        imgs = [img.to(device)]
+        img_sizes = [img.shape[-2:] for img in imgs]
+        # prende le ultime due dimensioni del tensore (H, W)
+        
+        crops, origins = model.window_imgs_semantic(imgs)
+        # Divide l’immagine in finestre/crop più piccoli.
+        # crops contiene i pezzi dell’immagine
+        # origins contiene le posizioni originali dei crop nell’immagine completa.
+    
+        # forward del modello sui crop
+        mask_logits_per_layer, class_logits_per_layer = model(crops)
+        mask_logits = F.interpolate(
+            mask_logits_per_layer[-1], (1024, 1024), mode="bilinear"
+        )
+        
+        # Combina: logits delle maschere e logits delle classi
+        # per ottenere logits per ogni pixel di ciascun crop
+        crop_logits = model.to_per_pixel_logits_semantic(
+            mask_logits, class_logits_per_layer[-1]
+        )
+        # Ricompone i logits dei vari crop nella forma dell’immagine originale
+        logits = model.revert_window_logits_semantic(crop_logits, origins, img_sizes)
+
+    return logits[0]
 
 
 # più il modello è incerto ---> più probabile che ci sia un'anomalia
