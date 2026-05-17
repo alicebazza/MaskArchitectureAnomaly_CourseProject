@@ -29,6 +29,7 @@ torch.manual_seed(seed)
 
 NUM_CHANNELS = 3 # 3 canali RGB
 NUM_CLASSES = 20
+IGNORE_INDEX = 255
 # gpu training specific
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True
@@ -313,3 +314,21 @@ def eval_score(ood_gts_list, anomaly_score_list):
     fpr = fpr_at_95_tpr(val_out, val_label)
 
     return prc_auc, fpr
+    
+    
+def plot_semantic_results(img, pred_array, target_array):
+    mapping = create_mapping([pred_array, target_array], IGNORE_INDEX)
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    axes[0].imshow(img.permute(1, 2, 0).cpu().numpy())
+    axes[0].set_title("Image")
+    axes[1].imshow(apply_colormap(pred_array, mapping))
+    axes[1].set_title("Prediction")
+    axes[2].imshow(apply_colormap(target_array, mapping))
+    axes[2].set_title("Target")
+
+    for ax in axes:
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.show()

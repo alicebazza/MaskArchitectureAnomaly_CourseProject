@@ -97,12 +97,9 @@ def main(args):
         inputs = Variable(images)
         # non calcoliamo i gradienti
         with torch.no_grad():
-            mask_logits_per_layer, class_logits_per_layer = model_EoMT(inputs)
-
-            logits_EoMT = eomt_to_pixel_logits(
-                mask_logits_per_layer,
-                class_logits_per_layer
-            )
+            image = image.squeeze(0)
+            image = (image * 255).to(torch.uint8)
+            logits_EoMT = eomt_to_pixel_logits(image, device, model_EoMT)
 
         # scegliamo la classe con il punteggio più alto per ogni singolo pixel
         # confrontiamo la predizione del modello con la label
@@ -155,14 +152,6 @@ def main(args):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-
-    parser.add_argument('--loadDir', default="../trained_models/")
-    parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
-    parser.add_argument("--eomtName", default="local_drive_model")
-    parser.add_argument('--subset', default="val")
-    parser.add_argument('--datadir', default="/content/drive/MyDrive/cityscapes/")
-    parser.add_argument('--num-workers', type=int, default=4)
-    parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
 
     main(parser.parse_args())

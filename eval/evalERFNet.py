@@ -43,13 +43,6 @@ def main():
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
     )  
-    parser.add_argument('--loadDir',default="../trained_models/")
-    parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
-    parser.add_argument('--loadModel', default="erfnet.py")
-    parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
-    parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
-    parser.add_argument('--num-workers', type=int, default=4)
-    parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
     args = parser.parse_args()
     
@@ -84,41 +77,7 @@ def main():
             
         # anomaly scores
         scores_ERFNet = anomaly_scores(logits_ERFNet, use_rba=False)
-        
-        # ===== visualization =====
-        
-        img_np = images.squeeze(0).cpu().permute(1,2,0).numpy()
-
-        pred = torch.argmax(logits_ERFNet, dim=0).cpu().numpy()
-
-        gt = load_ood_gt(path, size = (512,1024))
-
-        anom = scores_ERFNet[0].cpu().numpy()
-
-        fig, axs = plt.subplots(2, 2, figsize=(12,6))
-
-        axs[0,0].imshow(img_np)
-        axs[0,0].set_title("Input")
-        axs[0,0].axis("off")
-
-        axs[0,1].imshow(gt, cmap="gray")
-        axs[0,1].set_title("Ground Truth")
-        axs[0,1].axis("off")
-
-        axs[1,0].imshow(pred)
-        axs[1,0].set_title("Prediction")
-        axs[1,0].axis("off")
-
-        im = axs[1,1].imshow(anom, cmap="viridis")
-        axs[1,1].set_title("Anomaly Score")
-        axs[1,1].axis("off")
-
-        plt.colorbar(im, ax=axs[1,1])
-        plt.tight_layout()
-        plt.savefig(f"plots/plot_{idx}.png")
-        plt.close()
-        
-
+    
         # ground truth OOD
         ood_gts = load_ood_gt(path, size=(512, 1024))
 
@@ -139,12 +98,6 @@ def main():
             scores_ERFNet[2].cpu().numpy()
         )
 
-        # eliminiamo il riferimento ad un oggetto, serve per la gestione efficiente della memoria
-        del images
-        del result_ERFNet
-        del logits_ERFNet
-        del scores_ERFNet
-        del ood_gts
 
         if device.type == "cuda":
             torch.cuda.empty_cache()
