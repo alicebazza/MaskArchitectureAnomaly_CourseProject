@@ -18,7 +18,7 @@ from ood_metrics import fpr_at_95_tpr
 from sklearn.metrics import average_precision_score
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 
-from erfnet import ERFNet
+from eval.erfnet import ERFNet
 
 seed = 42
 
