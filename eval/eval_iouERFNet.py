@@ -17,6 +17,7 @@ from torchvision.transforms import (
     Resize,
     ToTensor
 )
+from torchvision.transforms import ToPILImage
 
 from dataset import cityscapes
 from transform import Relabel, ToLabel
