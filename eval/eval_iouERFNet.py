@@ -9,6 +9,7 @@ import torch
 from PIL import Image
 from argparse import ArgumentParser
 import random
+import numpy as np
 
 from torch.utils.data import DataLoader
 from torchvision.transforms import (
@@ -87,12 +88,9 @@ def main(args):
     start = time.time()
 
     for step, (images, labels, filename, filenameGt) in enumerate(loader):
-        labels = labels.long()
-        if (not args.cpu):
-            images = images.cuda()
-            labels = labels.cuda()
+        images = images.to(device)
+        labels = labels.long().to(device)
 
-        inputs = Variable(images)
         # non calcoliamo i gradienti
         with torch.no_grad():
             outputs = model_ERFNet(inputs) # mappa di probabilità
@@ -102,7 +100,7 @@ def main(args):
         # confrontiamo la predizione del modello con la label
         iouEvalVal.addBatch(outputs.max(1)[1].unsqueeze(1).data, labels)
 
-        filenameSave = filename[0].split("leftImg8bit/")[1] 
+        filenameSave = filename[0].split("leftImg8bit/")[-1]
         print (step, filenameSave)
 
     # calcolo precisione media e specifica
