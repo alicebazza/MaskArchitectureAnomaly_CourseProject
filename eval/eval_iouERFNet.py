@@ -180,6 +180,7 @@ if __name__ == '__main__':
         "--cpu",
         action="store_true"
     )
+    parser.add_argument('--num-workers', type=int, default=4)
 
     args = parser.parse_args()
 
