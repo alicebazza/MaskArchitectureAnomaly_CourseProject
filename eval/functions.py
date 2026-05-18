@@ -2,21 +2,20 @@
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import glob
 import torch
 import random
 from PIL import Image
 import numpy as np
+import os.path as osp
 
-import yaml
-import warnings
 import importlib
 import torch.nn.functional as F
 from torch.amp import autocast
+import matplotlib.pyplot as plt
 
 from ood_metrics import fpr_at_95_tpr
 from sklearn.metrics import average_precision_score
-from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+from torchvision.transforms import Compose, Resize
 
 from eval.erfnet import ERFNet
 
@@ -30,9 +29,6 @@ torch.manual_seed(seed)
 NUM_CHANNELS = 3 # 3 canali RGB
 NUM_CLASSES = 20
 IGNORE_INDEX = 255
-# gpu training specific
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = True
 
 
 def load_my_state_dict(model, state_dict):
@@ -58,6 +54,7 @@ def load_my_state_dict(model, state_dict):
             own_state[name].copy_(param)
     return model
 
+
 def extract_state_dict(checkpoint):
     """
     Estrae lo state_dict da un checkpoint salvato in formati diversi.
@@ -77,8 +74,22 @@ def extract_state_dict(checkpoint):
 
     return checkpoint
     
-# crea modello ERFNet vuoto, carica pesi addestrati
+
 def load_erfnet(args, device):
+    """
+    Istanzia il modello ERFNet e carica i pesi salvati da checkpoint.
+
+    Input:
+        args: oggetto contenente i parametri del programma, in particolare:
+            - loadDir: directory contenente i pesi
+            - erfnetWeights: nome del file dei pesi
+        device (torch.device): dispositivo su cui caricare il modello
+            (CPU oppure CUDA)
+
+    Output:
+        model (torch.nn.Module): modello ERFNet pronto per l'inferenza
+            con i pesi caricati
+    """
     erfnet_weightspath = osp.join(args.loadDir, args.erfnetWeights)
     # percorso del file dei pesi
 
@@ -101,87 +112,6 @@ def load_erfnet(args, device):
 
     return model
     
-# costruisce il modello a partire da una configurazione config, carica i pesi
-# salvati da state_dict_path, sposta il modello su CPU/GPU
-# e restituisce il modello pronto per inferenza
-def load_eomt(device, config, state_dict_path):
-    # Load encoder
-    encoder_cfg = config["model"]["init_args"]["network"]["init_args"]["encoder"]
-    encoder_module_name, encoder_class_name = encoder_cfg["class_path"].rsplit(".", 1)
-    encoder_cls = getattr(importlib.import_module(encoder_module_name), encoder_class_name)
-    encoder = encoder_cls(img_size=(1024, 1024), **encoder_cfg.get("init_args", {}))
-
-    # Load network
-    network_cfg = config["model"]["init_args"]["network"]
-    network_module_name, network_class_name = network_cfg["class_path"].rsplit(".", 1)
-    network_cls = getattr(importlib.import_module(network_module_name), network_class_name)
-    network_kwargs = {k: v for k, v in network_cfg["init_args"].items() if k != "encoder"}
-    network = network_cls(
-        masked_attn_enabled=False,
-        num_classes=19,
-        encoder=encoder,
-        **network_kwargs,
-    )
-
-    # Load Lightning module
-    lit_module_name, lit_class_name = config["model"]["class_path"].rsplit(".", 1)
-    lit_cls = getattr(importlib.import_module(lit_module_name), lit_class_name)
-    model_kwargs = {k: v for k, v in config["model"]["init_args"].items() if k != "network"}
-    if "stuff_classes" in config["data"].get("init_args", {}):
-        model_kwargs["stuff_classes"] = config["data"]["init_args"]["stuff_classes"]
-
-    model = (
-        lit_cls(
-            img_size=(1024, 1024),
-            num_classes=19,
-            network=network,
-            **model_kwargs,
-        )
-        .eval()
-        .to(device)
-    )
-
-    if device == 'cpu':
-        state_dict = torch.load(
-                    state_dict_path, map_location="cpu", weights_only=True
-                )
-    else:
-        state_dict = torch.load(
-                    state_dict_path, map_location=f"cuda:{0}", weights_only=True
-                )
-    model.load_state_dict(state_dict, strict=False)
-    print('Model\'s weights loaded succesfully')
-
-    return model
-    
-# Combina le predizioni finali di maschere e classi per ottenere una mappa di logit per-pixel sulle classi
-def eomt_to_pixel_logits(img, device, model):
-    with torch.no_grad(), autocast(dtype=torch.float16, device_type="cuda"):
-        imgs = [img.to(device)]
-        img_sizes = [img.shape[-2:] for img in imgs]
-        # prende le ultime due dimensioni del tensore (H, W)
-        
-        crops, origins = model.window_imgs_semantic(imgs)
-        # Divide l’immagine in finestre/crop più piccoli.
-        # crops contiene i pezzi dell’immagine
-        # origins contiene le posizioni originali dei crop nell’immagine completa.
-    
-        # forward del modello sui crop
-        mask_logits_per_layer, class_logits_per_layer = model(crops)
-        mask_logits = F.interpolate(
-            mask_logits_per_layer[-1], (1024, 1024), mode="bilinear"
-        )
-        
-        # Combina: logits delle maschere e logits delle classi
-        # per ottenere logits per ogni pixel di ciascun crop
-        crop_logits = model.to_per_pixel_logits_semantic(
-            mask_logits, class_logits_per_layer[-1]
-        )
-        # Ricompone i logits dei vari crop nella forma dell’immagine originale
-        logits = model.revert_window_logits_semantic(crop_logits, origins, img_sizes)
-
-    return logits[0]
-
 
 # più il modello è incerto ---> più probabile che ci sia un'anomalia
 def anomaly_scores(logits, use_rba=False):
@@ -196,7 +126,6 @@ def anomaly_scores(logits, use_rba=False):
 
     Input:
         logits (torch.Tensor): tensore di dimensione (C, H, W) contenente i logits
-            (output grezzo della rete, prima della softmax)
         use_rba (bool): se True, calcola anche lo score RBA
 
     Output:

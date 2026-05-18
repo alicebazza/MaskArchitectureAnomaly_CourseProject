@@ -1,21 +1,15 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import os
 import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # per guardare sia eval che eomt
-import cv2
 import glob
 import torch
-import random
-import matplotlib.pyplot as plt
-from PIL import Image
 import numpy as np
-from erfnet import ERFNet
-import os.path as osp
+from PIL import Image
 from argparse import ArgumentParser
-from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
-from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
-from torchvision.transforms import Compose, Resize, ToTensor, Normalize
-from evalAnomaly import *
+from torchvision.transforms import Compose, Resize, ToTensor
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from functions import *
 
 # pre-processing per le immagini di input
 input_transform = Compose(
@@ -42,7 +36,9 @@ def main():
         nargs="+",
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
-    )  
+    )
+    parser.add_argument("--loadDir", default="trained_models/")
+    parser.add_argument("--erfnetWeights", default="erfnet.pth")
     parser.add_argument('--cpu', action='store_true')
     args = parser.parse_args()
     
@@ -61,8 +57,7 @@ def main():
     
     # carica il modello
     model_ERFNet = load_erfnet(args, device)
-    
-    os.makedirs("plots", exist_ok=True)
+
     
     for idx, path in enumerate(glob.glob(os.path.expanduser(str(args.input[0])))):
     # ciclo su tutte le immagini
@@ -87,7 +82,6 @@ def main():
 
         ood_gts_list.append(ood_gts)
         
-        # ERFNet
         anomaly_score_msp_list_ERFNet.append(
             scores_ERFNet[0].cpu().numpy()
         )
@@ -98,6 +92,10 @@ def main():
             scores_ERFNet[2].cpu().numpy()
         )
 
+        del images
+        del result_ERFNet
+        del logits_ERFNet
+        del scores_ERFNet
 
         if device.type == "cuda":
             torch.cuda.empty_cache()
@@ -145,6 +143,12 @@ def main():
         f"AUPRC maxentropy score ERFNet: {prc_auc_maxentropy_ERFNet * 100.0} "
         f"FPR@TPR95 maxentropy ERFNet: {fpr_maxentropy_ERFNet * 100.0}\n\n"
     )
+    
+    del ood_gts_list
+    del anomaly_score_msp_list_ERFNet
+    del anomaly_score_maxlogit_list_ERFNet
+    del anomaly_score_maxentropy_list_ERFNet
+    del model_ERFNet
     
     file.close() # scriviamo su result.txt
 
