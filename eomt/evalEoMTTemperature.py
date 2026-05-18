@@ -6,15 +6,27 @@ import glob
 import torch
 import warnings
 import yaml
+import numpy as np
+import random
 
 from PIL import Image
-from torch.nn import functional as F
-import numpy as np
 from argparse import ArgumentParser
-from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
+from torchvision.transforms import Compose, Resize, ToTensor
 
-from torchvision.transforms import Compose, Resize, ToTensor, Normalize
-from eval.evalAnomaly import *
+from functions import *
+
+seed = 42
+
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 # pre-processing per le immagini di input
 input_transform = Compose(
@@ -79,8 +91,9 @@ def main():
     model_EoMT = None
     if not args.eval_only:
         model_EoMT = load_eomt(device, config, state_dict_path)
+        model_EoMT.eval()
     
-    for path in glob.glob(os.path.expanduser(str(args.input[0]))):
+    for path in glob.glob(os.path.expanduser(str(args.input))):
     # ciclo su tutte le immagini
         print(path)
         ood_gts = load_ood_gt(path, size=(1024, 1024))
@@ -109,6 +122,8 @@ def main():
                 logits_EoMT = eomt_to_pixel_logits(image, device, model_EoMT)
 
             torch.save(logits_EoMT, logits_path)
+            
+            del images
 
         logits_EoMT = logits_EoMT.to(device)
         
@@ -121,6 +136,11 @@ def main():
             anomaly_score_msp_temp_EoMT[T].append(
                 scores_temp[0].detach().cpu().numpy()
             )
+            del logits_temp
+            del scores_temp
+
+        del logits_EoMT
+        del ood_gts
         
         if device.type == "cuda":
             torch.cuda.empty_cache()

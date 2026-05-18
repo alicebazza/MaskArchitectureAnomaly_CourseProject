@@ -3,42 +3,56 @@
 # Eduardo Romera
 #######################
 
-import numpy as np
-import torch
-import torch.nn.functional as F
 import os
-import importlib
 import time
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # per guardare sia eval che eomt
 
+import torch
 from PIL import Image
 from argparse import ArgumentParser
+import random
+import numpy as np
+import sys
+import yaml
+import warnings
 
-from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from torchvision.transforms import Compose, CenterCrop, Normalize, Resize
-from torchvision.transforms import ToTensor, ToPILImage
+from torchvision.transforms import (
+    Compose,
+    Normalize,
+    Resize,
+    ToTensor
+)
+from torchvision.transforms import ToPILImage
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # per guardare sia eval che eomt
 
 from eval.dataset import cityscapes
-from eomt.models.eomt import EoMT
-from eomt.models.vit import ViT
-from eval.transform import Relabel, ToLabel, Colorize
+from eval.transform import Relabel, ToLabel
 from eval.iouEval import iouEval, getColorEntry
-from evalEoMT import load_eomt
-from evalEoMT import eomt_to_pixel_logits
-from eval.evalAnomaly import *
+from functions import *
 
 # configurazione e trasformazione dei dati
 NUM_CHANNELS = 3
 NUM_CLASSES = 20 # numero di categorie di oggetti che il modello può riconoscere
 
+seed = 42
+
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 image_transform = ToPILImage()
 input_transform_cityscapes = Compose([
     Resize((1024, 1024), Image.BILINEAR),
     ToTensor(),
-    Normalize(mean=[0.485, 0.456, 0.406],
-              std=[0.229, 0.224, 0.225])
+    #Normalize(mean=[0.485, 0.456, 0.406],
+              #std=[0.229, 0.224, 0.225])
 ])
 
 target_transform_cityscapes = Compose([
@@ -88,13 +102,10 @@ def main(args):
 
     start = time.time()
 
-    for step, (images, labels, filename, filenameGt) in enumerate(loader):
-        labels = labels.long()
-        if (not args.cpu):
-            images = images.cuda()
-            labels = labels.cuda()
+    for step, (image, labels, filename, filenameGt) in enumerate(loader):
+        image = image.to(device)
+        labels = labels.long().to(device)
 
-        inputs = Variable(images)
         # non calcoliamo i gradienti
         with torch.no_grad():
             image = image.squeeze(0)
@@ -107,7 +118,7 @@ def main(args):
 
         iouEvalVal.addBatch(prediction.data, labels)
 
-        filenameSave = filename[0].split("leftImg8bit/")[1] 
+        filenameSave = filename[0].split("leftImg8bit/")[-1]
 
         print (step, filenameSave)
 
@@ -152,6 +163,39 @@ def main(args):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--cpu', action='store_true')
 
-    main(parser.parse_args())
+    parser.add_argument(
+        "--datadir",
+        default="/content/drive/MyDrive/cityscapes",
+        help="Root directory del dataset Cityscapes"
+    )
+
+    parser.add_argument(
+        "--subset",
+        default="val",
+        choices=["train", "val", "test"],
+        help="Subset Cityscapes da usare"
+    )
+
+    parser.add_argument(
+        "--input",
+        nargs="+",
+        default=None,
+        help="Lista immagini o glob pattern opzionale"
+    )
+
+    parser.add_argument(
+        "--cpu",
+        action="store_true"
+    )
+    parser.add_argument('--num-workers', type=int, default=4)
+    parser.add_argument('--batch-size', type=int, default=1)
+
+    args = parser.parse_args()
+
+    if args.input is None:
+        args.input = [
+            f"{args.datadir}/leftImg8bit/{args.subset}/*/*_leftImg8bit.png"
+        ]
+
+    main(args)

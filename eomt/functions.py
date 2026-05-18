@@ -31,72 +31,6 @@ NUM_CLASSES = 20
 IGNORE_INDEX = 255
 
 
-def load_my_state_dict(model, state_dict):
-    """
-    Carica manualmente i pesi (state_dict) in un modello PyTorch esistente.
-
-    Input:
-        model (torch.nn.Module): modello già istanziato (architettura definita)
-        state_dict (dict): dizionario dei pesi da caricare (nome -> tensore)
-
-    Output:
-        model (torch.nn.Module): modello con i pesi aggiornati
-    """
-    own_state = model.state_dict()
-    for name, param in state_dict.items():
-        if name not in own_state:
-            if name.startswith("module."):
-                own_state[name.split("module.")[-1]].copy_(param)
-            else:
-                print(name, " not loaded")
-                continue
-        else:
-            own_state[name].copy_(param)
-    return model
-
-def extract_state_dict(checkpoint):
-    """
-    Estrae lo state_dict da un checkpoint salvato in formati diversi.
-    Supporta checkpoint con diverse chiavi
-
-    Input:
-        checkpoint (dict): oggetto caricato da torch.load()
-
-    Output:
-        state_dict (dict): dizionario dei pesi (nome -> tensore)
-    """
-    if "state_dict" in checkpoint:
-        return checkpoint["state_dict"]
-
-    if "model" in checkpoint:
-        return checkpoint["model"]
-
-    return checkpoint
-    
-# crea modello ERFNet vuoto, carica pesi addestrati
-def load_erfnet(args, device):
-    erfnet_weightspath = osp.join(args.loadDir, args.erfnetWeights)
-    # percorso del file dei pesi
-
-    print("Loading ERFNet weights:", erfnet_weightspath)
-
-    model = ERFNet(NUM_CLASSES).to(device)
-
-    if device.type == "cuda":
-        model = torch.nn.DataParallel(model)
-
-    checkpoint = torch.load(erfnet_weightspath, map_location=device)
-    # carica il file dalla memoria
-    checkpoint = extract_state_dict(checkpoint)
-    # estrae solo i pesi del modello dal chechpoint
-
-    model = load_my_state_dict(model, checkpoint) # copia i pesi dentro il modello
-    model.eval()
-
-    print("ERFNet loaded successfully")
-
-    return model
-    
 # costruisce il modello a partire da una configurazione config, carica i pesi
 # salvati da state_dict_path, sposta il modello su CPU/GPU
 # e restituisce il modello pronto per inferenza
@@ -312,19 +246,51 @@ def eval_score(ood_gts_list, anomaly_score_list):
     return prc_auc, fpr
     
     
-def plot_semantic_results(img, pred_array, target_array):
+def create_mapping(images, ignore_index):
+    unique_ids = np.unique(np.concatenate([np.unique(img) for img in images]))
+    valid_ids = unique_ids[unique_ids != ignore_index]
+
+    colors = np.array(
+        [plt.cm.hsv(i / len(valid_ids))[:3] for i in range(len(valid_ids))]
+    )
+
+    mapping = {cid: colors[i] for i, cid in enumerate(valid_ids)}
+    mapping[ignore_index] = np.array([0, 0, 0])
+
+    return mapping
+
+
+def apply_colormap(image, mapping):
+    colored_image = np.zeros((*image.shape, 3))
+
+    for cid in np.unique(image):
+        colored_image[image == cid] = mapping.get(cid, [0, 0, 0])
+
+    return colored_image
+    
+
+def plot_semantic_results_erfnet(img, pred_array, target_array, save_path=None):
     mapping = create_mapping([pred_array, target_array], IGNORE_INDEX)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    axes[0].imshow(img.permute(1, 2, 0).cpu().numpy())
+
+    axes[0].imshow(img.permute(1, 2, 0).detach().cpu().numpy())
     axes[0].set_title("Image")
+
     axes[1].imshow(apply_colormap(pred_array, mapping))
-    axes[1].set_title("Prediction")
+    axes[1].set_title("ERFNet prediction")
+
     axes[2].imshow(apply_colormap(target_array, mapping))
-    axes[2].set_title("Target")
+    axes[2].set_title("OOD ground truth")
 
     for ax in axes:
         ax.axis("off")
 
     plt.tight_layout()
-    plt.show()
+
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+    else:
+        plt.show()
+
