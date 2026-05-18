@@ -57,7 +57,7 @@ def main():
     )
     parser.add_argument("--erfnetWeights", default="erfnet_pretrained.pth")
     parser.add_argument('--cpu', action='store_true')
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args(args=[])
     
     # liste vuote dove verranno salvati i punteggi anomalia
     anomaly_score_msp_list_ERFNet = []
