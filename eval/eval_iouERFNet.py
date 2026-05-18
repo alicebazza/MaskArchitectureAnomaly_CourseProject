@@ -145,19 +145,48 @@ def main(args):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
+
+    parser.add_argument(
+        "--datadir",
+        default="/content/drive/MyDrive/cityscapes",
+        help="Root directory del dataset Cityscapes"
+    )
+
+    parser.add_argument(
+        "--subset",
+        default="val",
+        choices=["train", "val", "test"],
+        help="Subset Cityscapes da usare"
+    )
+
     parser.add_argument(
         "--input",
-        default="/home/shyam/Mask2Former/unk-eval/RoadObstacle21/images/*.webp",
         nargs="+",
-        help="A list of space separated input images; "
-        "or a single glob pattern such as 'directory/*.jpg'",
+        default=None,
+        help="Lista immagini o glob pattern opzionale"
     )
+
     parser.add_argument(
-    '--loadDir',
-    default='/content/MaskArchitectureAnomaly_CourseProject/trained_models'
+        "--loadDir",
+        default="/content/MaskArchitectureAnomaly_CourseProject/trained_models"
     )
-    parser.add_argument("--erfnetWeights", default="erfnet_pretrained.pth")
-    parser.add_argument('--cpu', action='store_true')
+
+    parser.add_argument(
+        "--erfnetWeights",
+        default="erfnet_pretrained.pth"
+    )
+
+    parser.add_argument(
+        "--cpu",
+        action="store_true"
+    )
+
     args = parser.parse_args()
 
-    main(parser.parse_args())
+    if args.input is None:
+        args.input = [
+            f"{args.datadir}/leftImg8bit/{args.subset}/*/*_leftImg8bit.png"
+        ]
+
+    main(args)
+
