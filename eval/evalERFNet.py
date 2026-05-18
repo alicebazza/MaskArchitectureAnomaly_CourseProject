@@ -37,8 +37,11 @@ def main():
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
     )
-    parser.add_argument("--loadDir", default="trained_models/")
-    parser.add_argument("--erfnetWeights", default="erfnet.pth")
+    parser.add_argument(
+    '--loadDir',
+    default='/content/MaskArchitectureAnomaly_CourseProject/trained_models'
+    )
+    parser.add_argument("--erfnetWeights", default="erfnet_pretrained.pth")
     parser.add_argument('--cpu', action='store_true')
     args = parser.parse_args()
     
@@ -56,7 +59,7 @@ def main():
     device = torch.device("cuda" if use_cuda else "cpu")
     
     # carica il modello
-    model_ERFNet = load_erfnet(args, device)
+    model_ERFNet = load_erfnet(args, device).to(device)
 
     
     for idx, path in enumerate(glob.glob(os.path.expanduser(str(args.input[0])))):

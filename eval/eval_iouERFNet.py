@@ -2,28 +2,25 @@
 # Nov 2017
 # Eduardo Romera
 #######################
-
-import numpy as np
-import torch
-import torch.nn.functional as F
 import os
-import importlib
 import time
 
+import torch
 from PIL import Image
 from argparse import ArgumentParser
 
-from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from torchvision.transforms import Compose, CenterCrop, Normalize, Resize
-from torchvision.transforms import ToTensor, ToPILImage
+from torchvision.transforms import (
+    Compose,
+    Normalize,
+    Resize,
+    ToTensor
+)
 
 from dataset import cityscapes
-from erfnet import ERFNet
-from transform import Relabel, ToLabel, Colorize
+from transform import Relabel, ToLabel
 from iouEval import iouEval, getColorEntry
-from evalERFNet import load_erfnet
-from evalAnomaly import *
+from functions import *
 
 # configurazione e trasformazione dei dati
 NUM_CHANNELS = 3
@@ -33,7 +30,7 @@ image_transform = ToPILImage()
 input_transform_cityscapes = Compose([
     Resize(512, Image.BILINEAR),
     ToTensor(),
-    Normalize(mean=[0.485, 0.456, 0.406],
+    # Normalize(mean=[0.485, 0.456, 0.406],
               std=[0.229, 0.224, 0.225])
 ])
 target_transform_cityscapes = Compose([
@@ -51,7 +48,7 @@ def main(args):
         print ("Error: datadir could not be loaded")
     
     # carica il modello
-    model_ERFNet = load_erfnet(args, device)
+    model_ERFNet = load_erfnet(args, device).to(device)
 
     model_ERFNet.eval()
 
@@ -140,14 +137,12 @@ if __name__ == '__main__':
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
     )
-
-    parser.add_argument('--loadDir', default="../trained_models/")
-    parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
-
-    parser.add_argument('--subset', default="val")
-    parser.add_argument('--datadir', default="/content/drive/MyDrive/cityscapes/")
-    parser.add_argument('--num-workers', type=int, default=4)
-    parser.add_argument('--batch-size', type=int, default=1)
+    parser.add_argument(
+    '--loadDir',
+    default='/content/MaskArchitectureAnomaly_CourseProject/trained_models'
+    )
+    parser.add_argument("--erfnetWeights", default="erfnet_pretrained.pth")
     parser.add_argument('--cpu', action='store_true')
+    args = parser.parse_args()
 
     main(parser.parse_args())

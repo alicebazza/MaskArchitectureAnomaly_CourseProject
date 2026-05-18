@@ -1,20 +1,17 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import os
 import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # per guardare sia eval che eomt
-import cv2
 import glob
 import torch
-import random
+import os.path as osp
+
 from PIL import Image
 import numpy as np
-from erfnet import ERFNet
-import os.path as osp
+
 from argparse import ArgumentParser
-from ood_metrics import fpr_at_95_tpr, calc_metrics, plot_roc, plot_pr,plot_barcode
-from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, average_precision_score
-from torchvision.transforms import Compose, Resize, ToTensor, Normalize
-from evalAnomaly import *
+
+from torchvision.transforms import Compose, Resize, ToTensor
+from functions import *
 
 # pre-processing per le immagini di input
 input_transform = Compose(
@@ -32,30 +29,6 @@ target_transform = Compose(
     ]
 )
 
-# crea modello ERFNet vuoto, carica pesi addestrati
-def load_erfnet(args, device):
-    erfnet_weightspath = osp.join(args.loadDir, args.erfnetWeights)
-    # percorso del file dei pesi
-
-    print("Loading ERFNet weights:", erfnet_weightspath)
-
-    model = ERFNet(NUM_CLASSES).to(device)
-
-    if device.type == "cuda":
-        model = torch.nn.DataParallel(model)
-
-    checkpoint = torch.load(erfnet_weightspath, map_location=device)
-    # carica il file dalla memoria
-    checkpoint = extract_state_dict(checkpoint)
-    # estrae solo i pesi del modello dal chechpoint
-
-    model = load_my_state_dict(model, checkpoint) # copia i pesi dentro il modello
-    model.eval()
-
-    print("ERFNet loaded successfully")
-
-    return model
-
 
 def main():
     parser = ArgumentParser()
@@ -63,23 +36,22 @@ def main():
         "--input",
         default="/home/shyam/Mask2Former/unk-eval/RoadObstacle21/images/*.webp",
         nargs="+",
-        help="A list of space separated input images; "
-        "or a single glob pattern such as 'directory/*.jpg'",
-    )  
-    parser.add_argument('--loadDir',default="../trained_models/")
-    parser.add_argument('--erfnetWeights', default="erfnet_pretrained.pth")
-    parser.add_argument('--loadModel', default="erfnet.py")
-    parser.add_argument('--subset', default="val")  #can be val or train (must have labels)
-    parser.add_argument('--datadir', default="/home/shyam/ViT-Adapter/segmentation/data/cityscapes/")
-    parser.add_argument('--num-workers', type=int, default=4)
-    parser.add_argument('--batch-size', type=int, default=1)
+    )
+
+    parser.add_argument(
+    '--loadDir',
+    default='/content/MaskArchitectureAnomaly_CourseProject/trained_models'
+    )
+    parser.add_argument("--erfnetWeights", default="erfnet_pretrained.pth")
+
     parser.add_argument('--cpu', action='store_true')
     parser.add_argument('--eval-only', action='store_true')
+
     parser.add_argument(
         "--temperatures",
         type=float,
         nargs="+",
-        default=[0.5, 0.75, 1.0, 1.1,]
+        default=[0.5, 0.75, 1.0, 1.1]
     )
     args = parser.parse_args()
 
@@ -104,7 +76,7 @@ def main():
     # carica il modello se non siamo in modalita eval
     model_ERFNet = None
     if not args.eval_only:
-        model_ERFNet = load_erfnet(args, device)
+        model_ERFNet = load_erfnet(args, device).to(device)
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
     # ciclo su tutte le immagini
@@ -131,6 +103,7 @@ def main():
                 Image.open(path).convert('RGB')).unsqueeze(0).float().to(device)
                 
             with torch.no_grad():
+                result_ERFNet = model_ERFNet(images)
                 result_ERFNet = result_ERFNet[:, :-1, :, :]
                 logits_ERFNet = result_ERFNet.squeeze(0).cpu()
 
