@@ -285,4 +285,8 @@ def plot_semantic_results_erfnet(img, pred_array, target_array):
         ax.axis("off")
 
     plt.tight_layout()
-    plt.show()
+
+    from IPython.display import display
+    display(fig)
+
+    plt.close(fig)
