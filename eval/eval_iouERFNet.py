@@ -181,6 +181,7 @@ if __name__ == '__main__':
         action="store_true"
     )
     parser.add_argument('--num-workers', type=int, default=4)
+    parser.add_argument('--batch-size', type=int, default=1)
 
     args = parser.parse_args()
 
