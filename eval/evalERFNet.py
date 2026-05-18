@@ -57,7 +57,7 @@ def main():
     )
     parser.add_argument("--erfnetWeights", default="erfnet_pretrained.pth")
     parser.add_argument('--cpu', action='store_true')
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args()
     
     # liste vuote dove verranno salvati i punteggi anomalia
     anomaly_score_msp_list_ERFNet = []
@@ -74,6 +74,9 @@ def main():
     
     # carica il modello
     model_ERFNet = load_erfnet(args, device).to(device)
+    
+    plots_dir = os.path.join(os.path.dirname(__file__), "plots_erfnet")
+    os.makedirs(plots_dir, exist_ok=True)
 
     
     for idx, path in enumerate(glob.glob(os.path.expanduser(str(args.input[0])))):
@@ -97,11 +100,13 @@ def main():
         if 1 not in np.unique(ood_gts):
             continue
 
-        if idx < 5:
+        if len(ood_gts_list) < 5:
+            save_path = os.path.join(plots_dir, f"plot_{len(ood_gts_list)}.png")
             plot_semantic_results_erfnet(
                 images.squeeze(0),
                 pred_array,
-                ood_gts
+                ood_gts,
+                save_path=save_path
             )
 
         ood_gts_list.append(ood_gts)

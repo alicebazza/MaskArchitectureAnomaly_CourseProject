@@ -12,6 +12,7 @@ import importlib
 import torch.nn.functional as F
 from torch.amp import autocast
 import matplotlib.pyplot as plt
+from IPython.display import display
 
 from ood_metrics import fpr_at_95_tpr
 from sklearn.metrics import average_precision_score
@@ -267,12 +268,13 @@ def apply_colormap(image, mapping):
 
     return colored_image
     
-def plot_semantic_results_erfnet(img, pred_array, target_array):
+
+def plot_semantic_results_erfnet(img, pred_array, target_array, save_path=None):
     mapping = create_mapping([pred_array, target_array], IGNORE_INDEX)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
-    axes[0].imshow(img.permute(1, 2, 0).cpu().numpy())
+    axes[0].imshow(img.permute(1, 2, 0).detach().cpu().numpy())
     axes[0].set_title("Image")
 
     axes[1].imshow(apply_colormap(pred_array, mapping))
@@ -285,4 +287,9 @@ def plot_semantic_results_erfnet(img, pred_array, target_array):
         ax.axis("off")
 
     plt.tight_layout()
-    plt.show()
+
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+    else:
+        plt.show()
