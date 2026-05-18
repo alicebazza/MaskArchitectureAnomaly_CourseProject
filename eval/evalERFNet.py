@@ -75,7 +75,7 @@ def main():
     # carica il modello
     model_ERFNet = load_erfnet(args, device).to(device)
     
-    plots_dir = os.path.join(os.path.dirname(__file__), "plots_erfnet")
+    plots_dir = "/content/plots_erfnet"
     os.makedirs(plots_dir, exist_ok=True)
 
     
@@ -101,7 +101,11 @@ def main():
             continue
 
         if len(ood_gts_list) < 5:
-            save_path = os.path.join(plots_dir, f"plot_{len(ood_gts_list)}.png")
+            save_path = os.path.join(
+                plots_dir,
+                f"plot_{len(ood_gts_list)}.png"
+            )
+
             plot_semantic_results_erfnet(
                 images.squeeze(0),
                 pred_array,
