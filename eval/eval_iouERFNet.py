@@ -8,6 +8,7 @@ import time
 import torch
 from PIL import Image
 from argparse import ArgumentParser
+import random
 
 from torch.utils.data import DataLoader
 from torchvision.transforms import (
@@ -25,6 +26,19 @@ from functions import *
 # configurazione e trasformazione dei dati
 NUM_CHANNELS = 3
 NUM_CLASSES = 20 # numero di categorie di oggetti che il modello può riconoscere
+
+seed = 42
+
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 image_transform = ToPILImage()
 input_transform_cityscapes = Compose([

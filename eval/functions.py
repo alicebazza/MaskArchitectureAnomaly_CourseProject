@@ -245,16 +245,41 @@ def eval_score(ood_gts_list, anomaly_score_list):
     return prc_auc, fpr
     
     
-def plot_semantic_results(img, pred_array, target_array):
+def create_mapping(images, ignore_index):
+    unique_ids = np.unique(np.concatenate([np.unique(img) for img in images]))
+    valid_ids = unique_ids[unique_ids != ignore_index]
+
+    colors = np.array(
+        [plt.cm.hsv(i / len(valid_ids))[:3] for i in range(len(valid_ids))]
+    )
+
+    mapping = {cid: colors[i] for i, cid in enumerate(valid_ids)}
+    mapping[ignore_index] = np.array([0, 0, 0])
+
+    return mapping
+
+
+def apply_colormap(image, mapping):
+    colored_image = np.zeros((*image.shape, 3))
+
+    for cid in np.unique(image):
+        colored_image[image == cid] = mapping.get(cid, [0, 0, 0])
+
+    return colored_image
+    
+def plot_semantic_results_erfnet(img, pred_array, target_array):
     mapping = create_mapping([pred_array, target_array], IGNORE_INDEX)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
     axes[0].imshow(img.permute(1, 2, 0).cpu().numpy())
     axes[0].set_title("Image")
+
     axes[1].imshow(apply_colormap(pred_array, mapping))
-    axes[1].set_title("Prediction")
+    axes[1].set_title("ERFNet prediction")
+
     axes[2].imshow(apply_colormap(target_array, mapping))
-    axes[2].set_title("Target")
+    axes[2].set_title("OOD ground truth")
 
     for ax in axes:
         ax.axis("off")

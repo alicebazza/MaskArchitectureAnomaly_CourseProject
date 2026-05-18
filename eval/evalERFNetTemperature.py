@@ -7,11 +7,25 @@ import os.path as osp
 
 from PIL import Image
 import numpy as np
+import random
 
 from argparse import ArgumentParser
 
 from torchvision.transforms import Compose, Resize, ToTensor
 from functions import *
+
+seed = 42
+
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 # pre-processing per le immagini di input
 input_transform = Compose(

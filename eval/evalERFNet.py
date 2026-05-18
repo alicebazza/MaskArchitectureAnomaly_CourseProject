@@ -5,11 +5,25 @@ import glob
 import torch
 import numpy as np
 from PIL import Image
+import random
 from argparse import ArgumentParser
 from torchvision.transforms import Compose, Resize, ToTensor
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from functions import *
+
+seed = 42
+
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 # pre-processing per le immagini di input
 input_transform = Compose(
@@ -68,10 +82,11 @@ def main():
         images = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().to(device)
         # images = images.permute(0,3,1,2)
         with torch.no_grad():
-            # ERFNet inference
             result_ERFNet = model_ERFNet(images)
-            result_ERFNet = result_ERFNet[:, :-1, :, :] # togliamo no object
-            logits_ERFNet = result_ERFNet.squeeze(0)
+            result_ERFNet = result_ERFNet[:, :-1, :, :]  # togliamo no object
+
+            logits_ERFNet = result_ERFNet.squeeze(0)     # shape: C x H x W
+            pred_array = logits_ERFNet.argmax(0).cpu().numpy()
             
         # anomaly scores
         scores_ERFNet = anomaly_scores(logits_ERFNet, use_rba=False)
@@ -79,9 +94,15 @@ def main():
         # ground truth OOD
         ood_gts = load_ood_gt(path, size=(512, 1024))
 
-        # salta immagini senza pixel OOD
         if 1 not in np.unique(ood_gts):
             continue
+
+        if idx < 5:
+            plot_semantic_results_erfnet(
+                images.squeeze(0),
+                pred_array,
+                ood_gts
+            )
 
         ood_gts_list.append(ood_gts)
         
