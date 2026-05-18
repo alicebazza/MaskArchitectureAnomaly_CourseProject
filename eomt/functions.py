@@ -160,7 +160,7 @@ def anomaly_scores(logits, use_rba=False):
     return scores
    
 
-def load_ood_gt(path, size = None):
+def load_ood_gt(path, size=None):
     """
     Carica la maschera ground truth (OOD) a partire dal percorso dell'immagine.
     Costruisce automaticamente il path della maschera e applica trasformazioni
@@ -247,6 +247,18 @@ def eval_score(ood_gts_list, anomaly_score_list):
     
     
 def create_mapping(images, ignore_index):
+    """
+    Input:
+        images: lista di immagini (matrici di pixel) da cui
+          estrarre gli ID unici
+        ignore_index: l'ID del pixel che rappresenta lo sfondo o una
+          classe da ignorare.
+
+    Output:
+        mapping: un dizionario che mappa ogni ID univoco a un colore RGB
+          espresso come array NumPy di 3 elementi. L'ID
+          da ignorare viene mappato sul nero [0, 0, 0].
+    """
     unique_ids = np.unique(np.concatenate([np.unique(img) for img in images]))
     valid_ids = unique_ids[unique_ids != ignore_index]
 
@@ -261,6 +273,9 @@ def create_mapping(images, ignore_index):
 
 
 def apply_colormap(image, mapping):
+    """Prende un'immagine contenente ID di classe e la trasforma in un'immagine
+    a colori RGB basandosi sul dizionario di mappatura fornito.
+    """
     colored_image = np.zeros((*image.shape, 3))
 
     for cid in np.unique(image):
@@ -270,6 +285,22 @@ def apply_colormap(image, mapping):
     
 
 def plot_semantic_results_erfnet(img, pred_array, target_array, save_path=None):
+    """Visualizza e confronta l'immagine originale, la predizione di ERFNet e la ground truth.
+
+    Genera un grafico a tre pannelli (side-by-side) per valutare visivamente
+    la qualità della segmentazione semantica. Permette sia di mostrare il
+    grafico a schermo che di salvarlo su disco.
+
+    Input:
+        img: l'immagine originale in formato Tensor di PyTorch
+        pred_array: la maschera di segmentazione predetta dal
+          modello ERFNet
+        target_array: la maschera di segmentazione reale (ground
+          truth)
+        save_path (str, optional): Il percorso in cui salvare l'immagine,
+                                   se None, il grafico verrà mostrato a video.
+
+    """
     mapping = create_mapping([pred_array, target_array], IGNORE_INDEX)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
