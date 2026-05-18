@@ -104,7 +104,7 @@ def load_erfnet(args, device):
     checkpoint = torch.load(erfnet_weightspath, map_location=device)
     # carica il file dalla memoria
     checkpoint = extract_state_dict(checkpoint)
-    # estrae solo i pesi del modello dal chechpoint
+    # estrae solo i pesi del modello dal checkpoint
 
     model = load_my_state_dict(model, checkpoint) # copia i pesi dentro il modello
     model.eval()
@@ -247,6 +247,19 @@ def eval_score(ood_gts_list, anomaly_score_list):
     
     
 def create_mapping(images, ignore_index):
+    """Crea una mappatura univoca di colori RGB per ogni ID di classe presente
+    nelle immagini.
+
+    Input:
+        images: una lista di array NumPy rappresentanti le
+          immagini di segmentazione.
+        ignore_index: l'ID della classe da ignorare, che
+          verrà mappato sul colore nero.
+
+    Output:
+        dict: un dizionario dove le chiavi sono gli ID delle classi
+              e i valori sono i rispettivi colori RGB.
+    """
     unique_ids = np.unique(np.concatenate([np.unique(img) for img in images]))
     valid_ids = unique_ids[unique_ids != ignore_index]
 
@@ -261,6 +274,9 @@ def create_mapping(images, ignore_index):
 
 
 def apply_colormap(image, mapping):
+    """Prende un'immagine contenente ID di classe e la trasforma in un'immagine
+    a colori RGB basandosi sul dizionario di mappatura fornito.
+    """
     colored_image = np.zeros((*image.shape, 3))
 
     for cid in np.unique(image):
@@ -270,6 +286,22 @@ def apply_colormap(image, mapping):
     
 
 def plot_semantic_results_erfnet(img, pred_array, target_array, save_path=None):
+    """Visualizza e confronta l'immagine originale, la predizione di ERFNet e la ground truth.
+
+    Genera un grafico a tre pannelli (side-by-side) per valutare visivamente
+    la qualità della segmentazione semantica. Permette sia di mostrare il
+    grafico a schermo che di salvarlo su disco.
+
+    Input:
+        img: l'immagine originale in formato Tensor di PyTorch
+        pred_array: la maschera di segmentazione predetta dal
+          modello ERFNet
+        target_array: la maschera di segmentazione reale (ground
+          truth)
+        save_path (str, optional): Il percorso in cui salvare l'immagine,
+                                   se None, il grafico verrà mostrato a video.
+
+    """
     mapping = create_mapping([pred_array, target_array], IGNORE_INDEX)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
