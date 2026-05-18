@@ -91,6 +91,7 @@ def main():
     model_ERFNet = None
     if not args.eval_only:
         model_ERFNet = load_erfnet(args, device).to(device)
+        model_ERFNet.eval()
     
     for path in glob.glob(os.path.expanduser(str(args.input[0]))):
     # ciclo su tutte le immagini

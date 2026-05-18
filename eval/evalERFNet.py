@@ -74,6 +74,7 @@ def main():
     
     # carica il modello
     model_ERFNet = load_erfnet(args, device).to(device)
+    model_ERFNet.eval()
     
     plots_dir = "/content/plots_erfnet"
     os.makedirs(plots_dir, exist_ok=True)
