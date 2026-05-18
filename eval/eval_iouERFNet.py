@@ -93,7 +93,7 @@ def main(args):
 
         # non calcoliamo i gradienti
         with torch.no_grad():
-            outputs = model_ERFNet(inputs) # mappa di probabilità
+            outputs = model_ERFNet(images) # mappa di probabilità
 
 
         # scegliamo la classe con il punteggio più alto per ogni singolo pixel
