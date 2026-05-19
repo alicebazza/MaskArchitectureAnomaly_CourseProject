@@ -93,7 +93,8 @@ def main():
             image = image.squeeze(0)
             image = (image * 255).to(torch.uint8)
             logits_EoMT = eomt_to_pixel_logits(image, device, model_EoMT)
-
+            print(logits_EoMT.shape)
+            pred_array = logits_EoMT.argmax(0).cpu().numpy()
             
         # anomaly scores
         scores_EoMT = anomaly_scores(logits_EoMT, use_rba=True)
