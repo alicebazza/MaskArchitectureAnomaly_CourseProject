@@ -93,7 +93,7 @@ def main():
         model_EoMT = load_eomt(device, config, state_dict_path)
         model_EoMT.eval()
     
-    for path in glob.glob(os.path.expanduser(str(args.input))):
+    for path in glob.glob(os.path.expanduser(str(args.input[0]))):
     # ciclo su tutte le immagini
         print(path)
         ood_gts = load_ood_gt(path, size=(1024, 1024))

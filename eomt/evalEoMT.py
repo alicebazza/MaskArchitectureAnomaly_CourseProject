@@ -81,7 +81,7 @@ def main():
     # carica il modello
     model_EoMT = load_eomt(device, config, state_dict_path)
     
-    for path in glob.glob(os.path.expanduser(str(args.input))):
+    for path in glob.glob(os.path.expanduser(str(args.input[0]))):
     # ciclo su tutte le immagini
         print(path)
         image = input_transform((Image.open(path).convert('RGB'))).unsqueeze(0).float().to(device)
