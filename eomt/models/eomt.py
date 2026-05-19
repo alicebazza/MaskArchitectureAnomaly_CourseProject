@@ -26,15 +26,17 @@ class EoMT(nn.Module):
     ):
         super().__init__()
         self.encoder = encoder
-        self.num_q = num_q
-        self.num_blocks = num_blocks
+        self.num_q = num_q # numero di query
+        self.num_blocks = num_blocks # numero di blocchi finali in cui usare le query
         self.masked_attn_enabled = masked_attn_enabled
 
         self.register_buffer("attn_mask_probs", torch.ones(num_blocks))
 
         self.q = nn.Embedding(num_q, self.encoder.backbone.embed_dim)
-
+        # num_q vettori appresi, ciascuno di dimensione embed_dim
+        
         self.class_head = nn.Linear(self.encoder.backbone.embed_dim, num_classes + 1)
+        # per ogni query produce logit di classe (+ no object)
 
         self.mask_head = nn.Sequential(
             nn.Linear(self.encoder.backbone.embed_dim, self.encoder.backbone.embed_dim),
@@ -44,6 +46,7 @@ class EoMT(nn.Module):
             nn.Linear(self.encoder.backbone.embed_dim, self.encoder.backbone.embed_dim),
         )
 
+        # ViT lavora su patch dell'immagine
         patch_size = encoder.backbone.patch_embed.patch_size
         max_patch_size = max(patch_size[0], patch_size[1])
         num_upscale = max(1, int(math.log2(max_patch_size)) - 2)
@@ -51,11 +54,12 @@ class EoMT(nn.Module):
         self.upscale = nn.Sequential(
             *[ScaleBlock(self.encoder.backbone.embed_dim) for _ in range(num_upscale)],
         )
+        # aumenta la risoluzione delle feature prima di produrre le maschere
 
     def _predict(self, x: torch.Tensor):
-        q = x[:, : self.num_q, :]
+        q = x[:, : self.num_q, :] # query
 
-        class_logits = self.class_head(q)
+        class_logits = self.class_head(q) # classi per ogni query
 
         x = x[:, self.num_q + self.encoder.backbone.num_prefix_tokens :, :]
         x = x.transpose(1, 2).reshape(
@@ -67,9 +71,14 @@ class EoMT(nn.Module):
         )
 
         return mask_logits, class_logits
+        # mask_logits:  [B, num_q, H, W]
+        # class_logits: [B, num_q, num_classes + 1]
 
     @torch.compiler.disable
     def _disable_attn_mask(self, attn_mask, prob):
+    # Disabilita casualmente la masked attention per alcune query durante il training.
+    # regolarizzazione: evita che il modello dipenda troppo dalle maschere intermedie, che nelle prime epoche possono essere rumorose o errate.
+    # In pratica alcune query tornano temporaneamente ad avere attenzione globale.
         if prob < 1:
             random_queries = (
                 torch.rand(attn_mask.shape[0], self.num_q, device=attn_mask.device)
@@ -88,6 +97,8 @@ class EoMT(nn.Module):
         mask: Optional[torch.Tensor],
         rope: Optional[torch.Tensor],
     ):
+    # implementa la self-attention del transformer
+    # Attention(Q,K,V) = softmax(QKᵀ / √d) V
         if rope is not None:
             if mask is not None:
                 mask = mask[:, None, ...].expand(-1, module.num_heads, -1, -1)
@@ -119,6 +130,9 @@ class EoMT(nn.Module):
         return x
 
     def _attn_mask(self, x: torch.Tensor, mask_logits: torch.Tensor, i: int):
+    # Costruisce la maschera di attenzione dinamica a partire dalle maschere di segmentazione predette dalle query.
+    # una query può attendere solo alle patch che appartengono
+    # alla regione che sta segmentando
         attn_mask = torch.ones(
             x.shape[0],
             x.shape[1],
@@ -148,22 +162,24 @@ class EoMT(nn.Module):
         return attn_mask
 
     def forward(self, x: torch.Tensor):
-        x = (x - self.encoder.pixel_mean) / self.encoder.pixel_std
+        x = (x - self.encoder.pixel_mean) / self.encoder.pixel_std # normalizzazione immagine
 
         rope = None
         if hasattr(self.encoder.backbone, "rope_embeddings"):
             rope = self.encoder.backbone.rope_embeddings(x)
 
-        x = self.encoder.backbone.patch_embed(x)
+        x = self.encoder.backbone.patch_embed(x) # trasfroma l'immagine in patch
 
         if hasattr(self.encoder.backbone, "_pos_embed"):
-            x = self.encoder.backbone._pos_embed(x)
+            x = self.encoder.backbone._pos_embed(x) # positional embedding
 
         attn_mask = None
         mask_logits_per_layer, class_logits_per_layer = [], []
 
+        # ciclo sui blocchi transformer
         for i, block in enumerate(self.encoder.backbone.blocks):
             if i == len(self.encoder.backbone.blocks) - self.num_blocks:
+            # negli ultimi num_blocks aggiunge le query
                 x = torch.cat(
                     (self.q.weight[None, :, :].expand(x.shape[0], -1, -1), x), dim=1
                 )
@@ -173,6 +189,7 @@ class EoMT(nn.Module):
                 and i >= len(self.encoder.backbone.blocks) - self.num_blocks
             ):
                 mask_logits, class_logits = self._predict(self.encoder.backbone.norm(x))
+                # predice maschere e classi per ogni layer finale
                 mask_logits_per_layer.append(mask_logits)
                 class_logits_per_layer.append(class_logits)
 
@@ -188,13 +205,13 @@ class EoMT(nn.Module):
             elif hasattr(block, "layer_scale1"):
                 x = x + block.layer_scale1(attn_out)
 
-            mlp_out = block.mlp(block.norm2(x))
+            mlp_out = block.mlp(block.norm2(x)) # MLP
             if hasattr(block, "ls2"):
                 x = x + block.ls2(mlp_out)
             elif hasattr(block, "layer_scale2"):
                 x = x + block.layer_scale2(mlp_out)
 
-        mask_logits, class_logits = self._predict(self.encoder.backbone.norm(x))
+        mask_logits, class_logits = self._predict(self.encoder.backbone.norm(x)) # ultima predizione
         mask_logits_per_layer.append(mask_logits)
         class_logits_per_layer.append(class_logits)
 
