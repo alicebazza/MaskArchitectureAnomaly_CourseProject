@@ -48,7 +48,7 @@ def main():
     parser = ArgumentParser()
     parser.add_argument(
         "--input",
-        default="/home/shyam/Mask2Former/unk-eval/RoadObstacle21/images/*.webp",
+        default="/home/shyam/Mask2Former/unk-eval/RoadObstacle21/image/*.webp",
         nargs="+",
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
@@ -112,7 +112,7 @@ def main():
             )
 
             plot_semantic_results_eomt(
-                images.squeeze(0),
+                image.squeeze(0),
                 pred_array,
                 ood_gts,
                 save_path=save_path
