@@ -101,6 +101,19 @@ def main():
         # salta immagini senza pixel OOD
         if 1 not in np.unique(ood_gts):
             continue
+            
+        if len(ood_gts_list) < 5:
+            save_path = os.path.join(
+                plots_dir,
+                f"plot_{len(ood_gts_list)}.png"
+            )
+
+            plot_semantic_results_eomt(
+                images.squeeze(0),
+                pred_array,
+                ood_gts,
+                save_path=save_path
+            )
 
         ood_gts_list.append(ood_gts)
         

@@ -284,8 +284,8 @@ def apply_colormap(image, mapping):
     return colored_image
     
 
-def plot_semantic_results_erfnet(img, pred_array, target_array, save_path=None):
-    """Visualizza e confronta l'immagine originale, la predizione di ERFNet e la ground truth.
+def plot_semantic_results_eomt(img, pred_array, target_array, save_path=None):
+    """Visualizza e confronta l'immagine originale, la predizione di EoMTe la ground truth.
 
     Genera un grafico a tre pannelli (side-by-side) per valutare visivamente
     la qualità della segmentazione semantica. Permette sia di mostrare il
@@ -294,7 +294,7 @@ def plot_semantic_results_erfnet(img, pred_array, target_array, save_path=None):
     Input:
         img: l'immagine originale in formato Tensor di PyTorch
         pred_array: la maschera di segmentazione predetta dal
-          modello ERFNet
+          modello EomT
         target_array: la maschera di segmentazione reale (ground
           truth)
         save_path (str, optional): Il percorso in cui salvare l'immagine,
@@ -309,7 +309,7 @@ def plot_semantic_results_erfnet(img, pred_array, target_array, save_path=None):
     axes[0].set_title("Image")
 
     axes[1].imshow(apply_colormap(pred_array, mapping))
-    axes[1].set_title("ERFNet prediction")
+    axes[1].set_title("EoMT prediction")
 
     axes[2].imshow(apply_colormap(target_array, mapping))
     axes[2].set_title("OOD ground truth")
