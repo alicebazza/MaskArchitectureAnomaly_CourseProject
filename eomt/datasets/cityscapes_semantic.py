@@ -9,11 +9,11 @@ from typing import Union
 from torch.utils.data import DataLoader
 from torchvision.datasets import Cityscapes
 
-from datasets.lightning_data_module import LightningDataModule
-from datasets.dataset import Dataset
-from datasets.transforms import Transforms
-from datasets.coco_ood_paster import CocoOODPaster
-from datasets.ood_wrapper import OODDatasetWrapper
+from eomt.datasets.lightning_data_module import LightningDataModule
+from eomt.datasets.dataset import Dataset
+from eomt.datasets.transforms import Transforms
+from eomt.datasets.coco_ood_paster import CocoOODPaster
+from eomt.datasets.ood_wrapper import OODDatasetWrapper
 
 
 class CityscapesSemantic(LightningDataModule):
