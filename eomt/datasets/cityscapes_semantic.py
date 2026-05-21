@@ -143,7 +143,6 @@ class CityscapesSemanticOE(CityscapesSemantic):
             base_dataset=self.cityscapes_train_dataset,
             paster=paster,
             p_ood=self.p_ood,
-            ood_label=self.ood_label,
         )
         # sostituisce il training dataset con un wrapper
 
