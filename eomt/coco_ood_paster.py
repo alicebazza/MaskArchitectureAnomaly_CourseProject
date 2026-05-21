@@ -39,7 +39,11 @@ class CocoOODPaster:
 
         self.img_ids = list(set(self.img_ids))
 
+        if len(self.img_ids) == 0:
+            raise ValueError(f"Nessuna immagine trovata per le categorie: {categories}")
+
         print("num img_ids:", len(self.img_ids))
+
 
         # immagini COCO che contengono almeno uno di quegli oggetti
 
