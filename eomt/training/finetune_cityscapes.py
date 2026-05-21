@@ -11,7 +11,7 @@ import warnings
 from argparse import ArgumentParser
 
 from functions import *
-from datasets.cityscapes_semantic import CityscapesSemanticOE
+from eomt.datasets.cityscapes_semantic import CityscapesSemanticOE
 
 seed = 42
 
