@@ -68,9 +68,7 @@ def main():
 
     results_path = '/content/drive/MyDrive/results_erfnet.txt'
     print("Scrivo risultati in:", results_path)
-
     file = open(results_path, 'w')
-    file.write("START\n")
     file.flush()
     
     use_cuda = (not args.cpu) and torch.cuda.is_available()

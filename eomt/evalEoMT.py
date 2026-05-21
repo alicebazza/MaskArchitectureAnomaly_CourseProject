@@ -63,8 +63,10 @@ def main():
     anomaly_score_rba_list_EoMT = []
     ood_gts_list = [] # maschere ground truth OoD
 
-    results_path = os.path.join(os.path.dirname(__file__), 'results.txt')
+    results_path = '/content/drive/MyDrive/results_eomt.txt'
+    print("Scrivo risultati in:", results_path)
     file = open(results_path, 'w')
+    file.flush()
     
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -185,7 +187,7 @@ def main():
         f"AUPRC rba score EoMT: {prc_auc_rba_EoMT * 100.0} "
         f"FPR@TPR95 rba EoMT: {fpr_rba_EoMT * 100.0}\n"
     )
-    
+    file.flush()
     file.close() # scriviamo su result.txt
 
 if __name__ == '__main__':

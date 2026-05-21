@@ -81,8 +81,11 @@ def main():
     
     ood_gts_list = [] # maschere ground truth OoD
 
-    results_path = os.path.join(os.path.dirname(__file__), 'results.txt')
+    results_path = '/content/drive/MyDrive/results_erfnet_temperatures.txt'
+    print("Scrivo risultati in:", results_path)
+
     file = open(results_path, 'w')
+    file.flush()
     
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -207,7 +210,7 @@ def main():
         f"Best FPR@TPR95: {best_fpr * 100.0}\n"
         f"Corresponding AUPRC: {best_auprc_at_best_fpr * 100.0}\n\n"
     )
-
+    file.flush()
     file.close()
 
 
