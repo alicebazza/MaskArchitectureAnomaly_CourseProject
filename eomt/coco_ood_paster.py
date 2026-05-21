@@ -157,5 +157,6 @@ class CocoOODPaster:
         # maschera finale OoD
         ood_mask = np.zeros((H, W), dtype=np.uint8)
         ood_mask[y:y+h, x:x+w] = obj_mask
+        print("DEBUG RETURN 3 VALUES")
 
         return city_paste, ood_mask, cat_name
