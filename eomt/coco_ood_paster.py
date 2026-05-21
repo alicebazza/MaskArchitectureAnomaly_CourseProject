@@ -33,13 +33,14 @@ class CocoOODPaster:
 
         print("cat_ids:", self.cat_ids)
 
-        self.img_ids = self.coco.getImgIds(catIds=self.cat_ids)
+        self.img_ids = []
+        for cat_id in self.cat_ids:
+            self.img_ids.extend(self.coco.getImgIds(catIds=[cat_id]))
+
+        self.img_ids = list(set(self.img_ids))
 
         print("num img_ids:", len(self.img_ids))
 
-        if len(self.img_ids) == 0:
-            self.img_ids = list(self.coco.imgs.keys())
-            print("Uso tutte le immagini COCO:", len(self.img_ids))
         # immagini COCO che contengono almeno uno di quegli oggetti
 
         self.min_area = min_area
@@ -123,7 +124,7 @@ class CocoOODPaster:
         city_paste = city_img.copy() # copia immagine
         H, W = city_paste.shape[:2]
 
-        obj_img, obj_mask = self.get_random_object() # estrae oggetto
+        obj_img, obj_mask, cat_name = self.get_random_object()
         print("Oggetto incollato:", cat_name)
         obj_img, obj_mask = self.resize_object(obj_img, obj_mask) # resize
 
