@@ -111,6 +111,36 @@ def eomt_to_pixel_logits(img, device, model):
         logits = model.revert_window_logits_semantic(crop_logits, origins, img_sizes)
 
     return logits[0]
+    
+def eomt_to_pixel_logits_train(img, device, model):
+
+    imgs = [img.to(device)]
+    img_sizes = [img.shape[-2:] for img in imgs]
+
+    crops, origins = model.window_imgs_semantic(imgs)
+
+    # forward del modello sui crop
+    mask_logits_per_layer, class_logits_per_layer = model(crops)
+
+    mask_logits = F.interpolate(
+        mask_logits_per_layer[-1],
+        (1024, 1024),
+        mode="bilinear",
+        align_corners=False,
+    )
+
+    crop_logits = model.to_per_pixel_logits_semantic(
+        mask_logits,
+        class_logits_per_layer[-1],
+    )
+
+    logits = model.revert_window_logits_semantic(
+        crop_logits,
+        origins,
+        img_sizes,
+    )
+
+    return logits[0]
 
 
 # più il modello è incerto ---> più probabile che ci sia un'anomalia
@@ -325,3 +355,85 @@ def plot_semantic_results_eomt(img, pred_array, target_array, save_path=None):
     else:
         plt.show()
 
+import torch
+import torch.nn.functional as F
+
+
+def freeze_model_except_final_parts(model):
+    """
+    Congela quasi tutto il modello e lascia allenabili solo le parti finali:
+    classificatore, mask head, MLP finali.
+    """
+
+    for name, param in model.named_parameters():
+        param.requires_grad = False
+
+    trainable_keywords = [
+        "class",
+        "classifier",
+        "class_embed",
+        "mask",
+        "mask_embed",
+        "mask_mlp",
+        "head",
+        "prediction",
+        "predictor",
+    ]
+
+    for name, param in model.named_parameters():
+        lname = name.lower()
+        if any(k in lname for k in trainable_keywords):
+            param.requires_grad = True
+
+    print_trainable_parameters(model)
+
+
+def print_trainable_parameters(model):
+    trainable = 0
+    total = 0
+
+    print("\nTrainable parameters:")
+    for name, param in model.named_parameters():
+        total += param.numel()
+        if param.requires_grad:
+            trainable += param.numel()
+            print(name)
+
+    perc = 100.0 * trainable / total
+    print(f"\nTrainable params: {trainable}/{total} = {perc:.4f}%\n")
+
+
+def ood_hinge_loss(logits, ood_mask, margin=0.1):
+    """
+    Loss OoD applicata solo sui pixel outlier.
+
+    logits:   [B, 19, H, W]
+    ood_mask: [B, H, W], bool
+    """
+
+    if logits.dim() == 3:
+        logits = logits.unsqueeze(0)
+
+    if ood_mask.dim() == 2:
+        ood_mask = ood_mask.unsqueeze(0)
+
+    ood_mask = ood_mask.to(logits.device).bool()
+
+    if ood_mask.shape[-2:] != logits.shape[-2:]:
+        ood_mask = F.interpolate(
+            ood_mask[:, None].float(),
+            size=logits.shape[-2:],
+            mode="nearest",
+        )[:, 0].bool()
+
+    probs = torch.sigmoid(logits)
+
+    # confidenza totale sulle 19 classi note
+    confidence = probs.sum(dim=1)  # [B, H, W]
+
+    loss_map = F.relu(confidence - margin) ** 2
+
+    if ood_mask.sum() == 0:
+        return logits.new_tensor(0.0)
+
+    return loss_map[ood_mask].mean()

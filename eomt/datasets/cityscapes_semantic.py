@@ -12,6 +12,8 @@ from torchvision.datasets import Cityscapes
 from datasets.lightning_data_module import LightningDataModule
 from datasets.dataset import Dataset
 from datasets.transforms import Transforms
+from datasets.coco_ood_paster import CocoOODPaster
+from datasets.ood_wrapper import OODDatasetWrapper
 
 
 class CityscapesSemantic(LightningDataModule):
@@ -97,3 +99,38 @@ class CityscapesSemantic(LightningDataModule):
             collate_fn=self.eval_collate,
             **self.dataloader_kwargs,
         )
+
+class CityscapesSemanticOE(CityscapesSemantic):
+    def __init__(
+        self,
+        path,
+        coco_root,
+        p_ood=0.5,
+        **kwargs
+    ):
+        super().__init__(
+            path=path,
+            num_classes=19,
+            **kwargs
+        )
+
+        self.coco_root = coco_root
+        self.p_ood = p_ood
+
+    def setup(self, stage=None):
+        super().setup(stage)
+
+        paster = CocoOODPaster(
+            coco_root=self.coco_root,
+            split="val2017",
+            target_height_range=(80, 250),
+        )
+
+        self.cityscapes_train_dataset = OODDatasetWrapper(
+            base_dataset=self.cityscapes_train_dataset,
+            paster=paster,
+            p_ood=self.p_ood,
+            ood_label=self.ood_label,
+        )
+
+        return self
