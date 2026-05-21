@@ -361,7 +361,7 @@ def freeze_model_except_final_parts(model):
         param.requires_grad = False
         # scorre tutti i parametri del modello e li rende non trainabili
 
-    for module in [model.q, model.class_head, model.mask_head], model.upscale]:
+    for module in [model.q, model.class_head, model.mask_head, model.upscale]:
         for param in module.parameters():
             param.requires_grad = True
             # riattivo questi parametri
