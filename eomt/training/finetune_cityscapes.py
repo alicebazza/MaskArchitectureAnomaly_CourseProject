@@ -49,6 +49,7 @@ def train_one_epoch(
         for image, target in zip(images, targets):
             image = image.to(device)
 
+            print(image.min(), image.max(), image.dtype)
             if image.dtype != torch.uint8:
                 image_input = (image * 255).to(torch.uint8)
             else:
@@ -66,6 +67,8 @@ def train_one_epoch(
             masks = target["masks"].to(device).bool()
             labels = target["labels"].to(device).long()
 
+            assert logits.shape[-2:] == (H, W), (logits.shape, H, W)
+            assert ood_mask.shape == (H, W), (ood_mask.shape, H, W)
             H, W = masks.shape[-2:]
 
             # semantic mask: [H, W]
@@ -86,7 +89,7 @@ def train_one_epoch(
             # loss di segmentazione sui pixel ID
             loss_seg = F.cross_entropy(
                 logits_b,
-                sem_mask_b,
+                sem_mask_b.unsqueeze(0),
                 ignore_index=ignore_index,
             )
 
