@@ -166,11 +166,9 @@ def main():
     model = load_eomt(device, config, state_dict_path)
 
     model.to(device)
-    print(model._modules.keys())
-    print(model.network._modules.keys())
 
     print("Freezing model...")
-    freeze_model_except_final_parts(model)
+    freeze_model_except_final_parts(model.network)
 
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
