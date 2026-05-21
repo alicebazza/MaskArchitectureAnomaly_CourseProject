@@ -355,35 +355,21 @@ def plot_semantic_results_eomt(img, pred_array, target_array, save_path=None):
     else:
         plt.show()
 
-import torch
-import torch.nn.functional as F
-
 
 def freeze_model_except_final_parts(model):
-    """
-    Congela quasi tutto il modello e lascia allenabili solo le parti finali:
-    classificatore, mask head, MLP finali.
-    """
-
-    for name, param in model.named_parameters():
+    for param in model.parameters():
         param.requires_grad = False
+        # scorre tutti i parametri del modello e li rende non trainabili
 
-    trainable_keywords = [
-        "class",
-        "classifier",
-        "class_embed",
-        "mask",
-        "mask_embed",
-        "mask_mlp",
-        "head",
-        "prediction",
-        "predictor",
-    ]
-
-    for name, param in model.named_parameters():
-        lname = name.lower()
-        if any(k in lname for k in trainable_keywords):
+    for module in [model.q, model.class_head, model.mask_head], model.upscale:
+        for param in module.parameters():
             param.requires_grad = True
+            # riattivo questi parametri
+            
+    # q = query apprese che cercano oggetti/regione nell’immagine durante l’attention. Vanno allenate perché inizialmente non sanno cosa rappresentare nel tuo task.
+    # class_head = trasforma ogni query nelle probabilità delle classi (num_classes + 1). Va allenata perché le classi del tuo dataset sono diverse da quelle del pretraining.
+    # mask_head = converte le query in embedding usati per produrre le maschere di segmentazione. Va allenata perché deve imparare quali feature corrispondono alle regioni corrette.
+    # upscale = aumenta la risoluzione delle feature del ViT per ottenere maschere più dettagliate. Va allenato perché è un modulo nuovo e deve imparare a ricostruire dettagli spaziali.
 
     print_trainable_parameters(model)
 
@@ -394,8 +380,10 @@ def print_trainable_parameters(model):
 
     print("\nTrainable parameters:")
     for name, param in model.named_parameters():
+    # scorre tutti i parametri del modello
         total += param.numel()
         if param.requires_grad:
+        # controlla se il parametro è trainabile
             trainable += param.numel()
             print(name)
 
@@ -405,10 +393,8 @@ def print_trainable_parameters(model):
 
 def ood_hinge_loss(logits, ood_mask, margin=0.1):
     """
-    Loss OoD applicata solo sui pixel outlier.
-
-    logits:   [B, 19, H, W]
-    ood_mask: [B, H, W], bool
+    logits:   [19, H, W] oppure [1, 19, H, W]
+    ood_mask: [H, W] oppure [1, H, W]
     """
 
     if logits.dim() == 3:
@@ -419,21 +405,16 @@ def ood_hinge_loss(logits, ood_mask, margin=0.1):
 
     ood_mask = ood_mask.to(logits.device).bool()
 
-    if ood_mask.shape[-2:] != logits.shape[-2:]:
-        ood_mask = F.interpolate(
-            ood_mask[:, None].float(),
-            size=logits.shape[-2:],
-            mode="nearest",
-        )[:, 0].bool()
-
     probs = torch.sigmoid(logits)
-
-    # confidenza totale sulle 19 classi note
-    confidence = probs.sum(dim=1)  # [B, H, W]
+    # trasformo in probabilita non esclusive (sigmoid)
+    confidence = probs.sum(dim=1)
+    # somma le probbailità sulle 19 classi note
+    # [B, 19, H, W] -> [B, H, W]
 
     loss_map = F.relu(confidence - margin) ** 2
 
-    if ood_mask.sum() == 0:
+    if not ood_mask.any():
         return logits.new_tensor(0.0)
+    # se non ci sono pixel OoD nella maschera restituisce 0
 
     return loss_map[ood_mask].mean()

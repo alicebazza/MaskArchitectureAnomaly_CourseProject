@@ -19,7 +19,7 @@ from datasets.ood_wrapper import OODDatasetWrapper
 class CityscapesSemantic(LightningDataModule):
     def __init__(
         self,
-        path,
+        path, # cartella dove stanno gli zip cityscapes
         num_workers: int = 4,
         batch_size: int = 16,
         img_size: tuple[int, int] = (1024, 1024),
@@ -38,6 +38,7 @@ class CityscapesSemantic(LightningDataModule):
         )
         self.save_hyperparameters(ignore=["_class_path"])
 
+        # crea le trasformazioni da applicare al dataset di training
         self.transforms = Transforms(
             img_size=img_size,
             color_jitter_enabled=color_jitter_enabled,
@@ -46,6 +47,8 @@ class CityscapesSemantic(LightningDataModule):
 
     @staticmethod
     def target_parser(target, **kwargs):
+    # questo metodo trasforma una singola immagine con labelId
+    # in una lista di maschere separate + train_id
         masks, labels = [], []
 
         for label_id in target[0].unique():
@@ -57,6 +60,8 @@ class CityscapesSemantic(LightningDataModule):
             masks.append(target[0] == label_id)
             labels.append(cls.train_id)
 
+        # mask = lista di maschere binarie
+        # labels = lista delle classi di training
         return masks, labels, [False for _ in range(len(masks))]
 
     def setup(self, stage: Union[str, None] = None) -> LightningDataModule:
@@ -70,20 +75,24 @@ class CityscapesSemantic(LightningDataModule):
             "target_parser": self.target_parser,
             "check_empty_targets": self.check_empty_targets,
         }
+        # crea il dataset di training
         self.cityscapes_train_dataset = Dataset(
             transforms=self.transforms,
             img_folder_path_in_zip=Path("./leftImg8bit/train"),
             target_folder_path_in_zip=Path("./gtFine/train"),
             **cityscapes_dataset_kwargs,
         )
+        # crea il dataset di validation
         self.cityscapes_val_dataset = Dataset(
             img_folder_path_in_zip=Path("./leftImg8bit/val"),
             target_folder_path_in_zip=Path("./gtFine/val"),
             **cityscapes_dataset_kwargs,
         )
+        # nessuna trasformazione
 
         return self
 
+    # crea il dataloader di training
     def train_dataloader(self):
         return DataLoader(
             self.cityscapes_train_dataset,
@@ -93,6 +102,7 @@ class CityscapesSemantic(LightningDataModule):
             **self.dataloader_kwargs,
         )
 
+    # crea il dataloader di validation
     def val_dataloader(self):
         return DataLoader(
             self.cityscapes_val_dataset,
@@ -103,8 +113,8 @@ class CityscapesSemantic(LightningDataModule):
 class CityscapesSemanticOE(CityscapesSemantic):
     def __init__(
         self,
-        path,
-        coco_root,
+        path, # percorso cityscapes
+        coco_root, # percorso coco
         p_ood=0.5,
         **kwargs
     ):
@@ -113,18 +123,21 @@ class CityscapesSemanticOE(CityscapesSemantic):
             num_classes=19,
             **kwargs
         )
+        # costruisce un classico cityscapes con 19 classi
 
         self.coco_root = coco_root
         self.p_ood = p_ood
 
     def setup(self, stage=None):
         super().setup(stage)
+        # costruisce normalmente training e validation set
 
         paster = CocoOODPaster(
             coco_root=self.coco_root,
             split="val2017",
-            target_height_range=(80, 250),
+            target_height_range=(80, 250), # TODO da valutare se aumentare
         )
+        # Crea un oggetto che prende istanze da COCO val2017 e le incolla sulle immagini Cityscapes.
 
         self.cityscapes_train_dataset = OODDatasetWrapper(
             base_dataset=self.cityscapes_train_dataset,
@@ -132,5 +145,6 @@ class CityscapesSemanticOE(CityscapesSemantic):
             p_ood=self.p_ood,
             ood_label=self.ood_label,
         )
+        # sostituisce il training dataset con un wrapper
 
         return self
