@@ -69,7 +69,7 @@ def train_one_epoch(
             H, W = masks.shape[-2:]
 
             # semantic mask: [H, W]
-            sem_mask = torch.full(
+            sem_mask_b = torch.full(
                 (H, W),
                 fill_value=ignore_index, # inizialmente tutta a 255
                 device=device,
@@ -77,7 +77,7 @@ def train_one_epoch(
             )
 
             for m, label in zip(masks, labels):
-                sem_mask[m] = label # assegna ai pixel dell'oggetto la maschera corrispondente
+                sem_mask_b[m] = label # assegna ai pixel dell'oggetto la maschera corrispondente
             
 
             # maschera OoD: [H, W], bool
