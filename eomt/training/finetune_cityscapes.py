@@ -153,7 +153,7 @@ def main():
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     
-    config_path = 'eomt/configs/dinov2/cityscapes/semantic/eomt_base_640.yaml'
+    config_path = '../configs/dinov2/cityscapes/semantic/eomt_base_640.yaml'
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     state_dict_path = '/content/drive/MyDrive/eomt_cityscapes.bin'
