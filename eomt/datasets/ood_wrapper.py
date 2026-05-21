@@ -18,10 +18,11 @@ class OODDatasetWrapper(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         img, target = self.base_dataset[idx]
         # prende immagine e target dal dataset originale
-        # target è un dizionario
-        # target['mask'] = ha dim HxW e ad ogni pixel associa una classe da 0 a 18
-        # target['ood_mask'] = maschera booeala con true -> pixel ID e false -> pixel OoD
-        # target['ood_category'] = nome dell'oggetto OoD incollato
+        # target è un dizionario con:
+        # - target["masks"]    : [N, H, W] maschere binarie delle N istanze presenti
+        # - target["labels"]   : [N] classe associata ad ogni istanza
+        # - target["is_crowd"] : [N] flag crowd/ignore per ogni istanza
+        # - target["ood_mask"] : [H, W] maschera booleana dei pixel OoD
 
         if random.random() > self.p_ood:
             target["ood_mask"] = torch.zeros(img.shape[-2:], dtype=torch.bool)

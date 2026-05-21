@@ -63,8 +63,22 @@ def train_one_epoch(
             logits_b = logits.unsqueeze(0)  # [1, 19, H, W] per cross entropy
 
             # maschera semantica ID: [H, W], valori 0..18, ignore_index su pixel da ignorare
-            sem_mask = target["mask"].to(device).long()  # oppure target["semantic_mask"]
-            sem_mask_b = sem_mask.unsqueeze(0)           # [1, H, W]
+            masks = target["masks"].to(device).bool()
+            labels = target["labels"].to(device).long()
+
+            H, W = masks.shape[-2:]
+
+            # semantic mask: [H, W]
+            sem_mask = torch.full(
+                (H, W),
+                fill_value=ignore_index, # inizialmente tutta a 255
+                device=device,
+                dtype=torch.long,
+            )
+
+            for m, label in zip(masks, labels):
+                sem_mask[m] = label # assegna ai pixel dell'oggetto la maschera corrispondente
+            
 
             # maschera OoD: [H, W], bool
             ood_mask = target["ood_mask"].to(device).bool()

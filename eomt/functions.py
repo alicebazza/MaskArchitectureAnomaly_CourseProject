@@ -361,12 +361,11 @@ def freeze_model_except_final_parts(model):
         param.requires_grad = False
         # scorre tutti i parametri del modello e li rende non trainabili
 
-    for module in [model.q, model.class_head, model.mask_head]:
+    for module in [model.class_head, model.mask_head]:
         for param in module.parameters():
             param.requires_grad = True
             # riattivo questi parametri
             
-    # q = query apprese che cercano oggetti/regione nell’immagine durante l’attention. Vanno allenate perché inizialmente non sanno cosa rappresentare nel tuo task.
     # class_head = trasforma ogni query nelle probabilità delle classi (num_classes + 1). Va allenata perché le classi del tuo dataset sono diverse da quelle del pretraining.
     # mask_head = converte le query in embedding usati per produrre le maschere di segmentazione. Va allenata perché deve imparare quali feature corrispondono alle regioni corrette.
 
