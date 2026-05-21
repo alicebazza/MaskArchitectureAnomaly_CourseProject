@@ -66,8 +66,12 @@ def main():
     
     ood_gts_list = [] # maschere ground truth OoD
 
-    results_path = os.path.join(os.path.dirname(__file__), 'results.txt')
+    results_path = '/content/drive/MyDrive/results_erfnet.txt'
+    print("Scrivo risultati in:", results_path)
+
     file = open(results_path, 'w')
+    file.write("START\n")
+    file.flush()
     
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -177,6 +181,8 @@ def main():
         f"AUPRC maxentropy score ERFNet: {prc_auc_maxentropy_ERFNet * 100.0} "
         f"FPR@TPR95 maxentropy ERFNet: {fpr_maxentropy_ERFNet * 100.0}\n\n"
     )
+    file.flush()
+    file.close()
     
     del ood_gts_list
     del anomaly_score_msp_list_ERFNet
