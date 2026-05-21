@@ -29,8 +29,17 @@ class CocoOODPaster:
         # oggetti che verranno incollati
 
         self.categories = categories
-        self.cat_ids = self.coco.getCatIds(catNms=categories) # ID categorie
+        self.cat_ids = self.coco.getCatIds(catNms=categories)
+
+        print("cat_ids:", self.cat_ids)
+
         self.img_ids = self.coco.getImgIds(catIds=self.cat_ids)
+
+        print("num img_ids:", len(self.img_ids))
+
+        if len(self.img_ids) == 0:
+            self.img_ids = list(self.coco.imgs.keys())
+            print("Uso tutte le immagini COCO:", len(self.img_ids))
         # immagini COCO che contengono almeno uno di quegli oggetti
 
         self.min_area = min_area
