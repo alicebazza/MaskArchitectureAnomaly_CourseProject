@@ -49,7 +49,6 @@ def train_one_epoch(
         for image, target in zip(images, targets):
             image = image.to(device)
 
-            print(image.min(), image.max(), image.dtype)
             if image.dtype != torch.uint8:
                 image_input = (image * 255).to(torch.uint8)
             else:
@@ -67,9 +66,12 @@ def train_one_epoch(
             masks = target["masks"].to(device).bool()
             labels = target["labels"].to(device).long()
 
-            assert logits.shape[-2:] == (H, W), (logits.shape, H, W)
-            assert ood_mask.shape == (H, W), (ood_mask.shape, H, W)
             H, W = masks.shape[-2:]
+
+            assert logits.shape[-2:] == (H, W), (logits.shape, H, W)
+
+            ood_mask = target["ood_mask"].to(device).bool()
+            assert ood_mask.shape == (H, W), (ood_mask.shape, H, W)
 
             # semantic mask: [H, W]
             sem_mask_b = torch.full(
