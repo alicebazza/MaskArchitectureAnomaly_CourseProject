@@ -28,6 +28,7 @@ def train_one_epoch(
     lambda_oe=0.1,
     margin=0.1,
     ignore_index=255,
+    file=None,
 ):
     model.train()
 
@@ -121,12 +122,18 @@ def train_one_epoch(
         num_batches += 1
 
         if batch_idx % 20 == 0:
-            print(
+            msg = (
                 f"batch {batch_idx:04d} | "
                 f"loss={loss_batch.item():.6f} | "
                 f"loss_seg={loss_seg_batch.item():.6f} | "
                 f"loss_ood={loss_ood_batch.item():.6f}"
             )
+
+            print(msg)
+
+            if file is not None:
+                file.write(msg + "\n")
+                file.flush()
 
     return {
         "loss": epoch_loss / max(num_batches, 1),
@@ -171,6 +178,13 @@ def main():
 
     use_cuda = (not args.cpu) and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
+    
+    results_path = '/content/drive/MyDrive/results_finetune.txt'
+
+    print("Scrivo risultati in:", results_path)
+
+    file = open(results_path, 'w')
+    file.flush()
     
     config_path = '../configs/dinov2/cityscapes/semantic/eomt_base_640.yaml'
     with open(config_path, "r") as f:
@@ -221,15 +235,21 @@ def main():
             device=device,
             lambda_oe=args.lambda_oe,
             margin=args.margin,
+            file=file,
         )
 
-        print(
+        msg = (
             f"Epoch {epoch + 1}/{args.epochs} | "
             f"loss={avg_loss['loss']:.6f} | "
             f"loss_seg={avg_loss['loss_seg']:.6f} | "
             f"loss_ood={avg_loss['loss_ood']:.6f}"
         )
 
+        print(msg)
+
+        file.write(msg + "\n")
+        file.flush()
+        
         torch.save(
             model.state_dict(),
             args.save_path,
@@ -238,6 +258,7 @@ def main():
         print(f"Checkpoint saved to: {args.save_path}")
 
     print("Training completed.")
+    file.close()
 
 
 if __name__ == "__main__":
