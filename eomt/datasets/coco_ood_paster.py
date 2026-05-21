@@ -133,6 +133,18 @@ class CocoOODPaster:
 
         h, w = obj_img.shape[:2]
         
+        # Se l'oggetto è più grande dell'immagine Cityscapes, lo ridimensiona
+        if w > W or h > H:
+            scale = min(W / w, H / h) * 0.8
+
+            new_w = max(1, int(w * scale))
+            new_h = max(1, int(h * scale))
+
+            obj_img = cv2.resize(obj_img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            obj_mask = cv2.resize(obj_mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+
+            h, w = obj_img.shape[:2]
+                
         # sceglie casualmente le coordinate in cui incollare l'oggetto
         x = random.randint(0, W - w)
         y = random.randint(0, H - h)
