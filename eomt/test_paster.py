@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 from coco_ood_paster import CocoOODPaster
 
 
-coco_root = "/content/datasets/coco"
-city_img_path = "/content/datasets/cityscapes/example.png"
+coco_root = "content/drive/MyDrive/datasets/coco"
+city_img_path = "/content/drive/MyDrive/datasets/cityscapes/example.png"
 
 paster = CocoOODPaster(
     coco_root=coco_root,
