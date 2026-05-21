@@ -89,7 +89,9 @@ class CocoOODPaster:
             if obj_img.shape[0] < 5 or obj_img.shape[1] < 5:
                 continue
 
-            return obj_img, obj_mask
+            cat_name = self.coco.loadCats([ann["category_id"]])[0]["name"]
+
+            return obj_img, obj_mask, cat_name
 
         raise RuntimeError("Could not sample a valid COCO object.")
 
@@ -122,6 +124,7 @@ class CocoOODPaster:
         H, W = city_paste.shape[:2]
 
         obj_img, obj_mask = self.get_random_object() # estrae oggetto
+        print("Oggetto incollato:", cat_name)
         obj_img, obj_mask = self.resize_object(obj_img, obj_mask) # resize
 
         h, w = obj_img.shape[:2]
@@ -150,4 +153,4 @@ class CocoOODPaster:
         ood_mask = np.zeros((H, W), dtype=np.uint8)
         ood_mask[y:y+h, x:x+w] = obj_mask
 
-        return city_paste, ood_mask
+        return city_paste, ood_mask, cat_name
