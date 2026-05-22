@@ -74,7 +74,8 @@ def main():
     config_path = 'configs/dinov2/cityscapes/semantic/eomt_base_640.yaml'
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
-    state_dict_path = '/content/drive/MyDrive/eomt_cityscapes.bin'
+    # state_dict_path = '/content/drive/MyDrive/eomt_cityscapes.bin'ù
+    state_dict_path = '/content/drive/MyDrive/eomt_cityscapes_oe_finetuned.pth'  # finetuning
     
     warnings.filterwarnings("ignore",
         message=r".*Attribute 'network' is an instance of `nn\.Module` and is already saved during checkpointing.*",
