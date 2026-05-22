@@ -110,6 +110,7 @@ class CityscapesSemantic(LightningDataModule):
             **self.dataloader_kwargs,
         )
 
+# estensione della classe per le anomalie
 class CityscapesSemanticOE(CityscapesSemantic):
     def __init__(
         self,

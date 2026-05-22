@@ -4,7 +4,7 @@ import numpy as np
 from pycocotools.coco import COCO
 
 # prende un oggetto dal dataset COCO e lo incolla dentro un'immagine
-# viene tratta come oggetto OoD
+# viene trattato come oggetto OoD
 class CocoOODPaster:
     def __init__(
         self,
@@ -57,7 +57,7 @@ class CocoOODPaster:
             iscrowd=False
         ) # ID delle annotazioni dell'immagine scelta
         
-        # ogni annotazione corrisponde a un oggetto nell'immagine
+        # ogni annotazione corrisponde ad un oggetto nell'immagine
         # contiene: ID dell'immagine a cui appartiene, categoria, bounding box
 
         ann = random.choice(self.coco.loadAnns(ann_ids))
