@@ -124,8 +124,9 @@ def main():
                 logits_EoMT = eomt_to_pixel_logits(image, device, model_EoMT)
 
             torch.save(logits_EoMT, logits_path)
-            
-            del images
+
+            if 'images' in locals():
+                del images
 
         logits_EoMT = logits_EoMT.to(device)
         
