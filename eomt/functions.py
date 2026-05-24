@@ -205,7 +205,7 @@ def load_ood_gt(path, size=None):
     # parte dal path dell'immagine e trova automatica la maschera corrispondente
     pathGT = path.replace("images", "labels_masks")
 
-    if "RoadObstacle21" in pathGT:
+    if "RoadObsticle21" in pathGT:
         pathGT = pathGT.replace("webp", "png")
 
     if "fs_static" in pathGT:
