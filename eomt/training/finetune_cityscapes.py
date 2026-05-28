@@ -26,6 +26,7 @@ def train_one_epoch(
     train_loader,
     optimizer,
     device,
+    criterion,
     alpha=5.0,
     file=None,
 ):
@@ -52,7 +53,7 @@ def train_one_epoch(
                 "labels": target["labels"].to(device).long(),
             }
             for target in targets
-        ]
+        ] # [B, H, W]
 
         ood_masks = torch.stack(
             [target["ood_mask"].to(device).bool() for target in targets],
@@ -179,6 +180,17 @@ def main():
     train_loader = data_module.train_dataloader()
 
     print("Starting OE fine-tuning...")
+    
+    criterion = MaskClassificationLoss(
+        num_points=12544,
+        oversample_ratio=3.0,
+        importance_sample_ratio=0.75,
+        mask_coefficient=5.0,
+        dice_coefficient=5.0,
+        class_coefficient=2.0,
+        num_labels=19,
+        no_object_coefficient=0.1,
+    )
 
     for epoch in range(args.epochs):
         avg_loss = train_one_epoch(
@@ -186,6 +198,7 @@ def main():
             train_loader=train_loader,
             optimizer=optimizer,
             device=device,
+            criterion=criterion,
             alpha=args.alpha,
             file=file,
         )
