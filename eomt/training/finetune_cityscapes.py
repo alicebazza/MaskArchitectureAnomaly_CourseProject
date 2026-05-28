@@ -26,7 +26,6 @@ def train_one_epoch(
     train_loader,
     optimizer,
     device,
-    criterion,
     alpha=5.0,
     file=None,
 ):
@@ -53,21 +52,21 @@ def train_one_epoch(
                 "labels": target["labels"].to(device).long(),
             }
             for target in targets
-        ] # [B, H, W]
+        ]
 
         ood_masks = torch.stack(
             [target["ood_mask"].to(device).bool() for target in targets],
             dim=0,
         )
 
-        batch_eomt = images_input, targets_eomt
-
-        loss_eomt = model.training_step(batch_eomt, batch_idx)
-        
-        logits = eomt_to_pixel_logits_train(images_input,device,model)
-        loss_ood = ood_hinge_loss(logits=logits,ood_mask=ood_masks,alpha=alpha)
-
-        loss = loss_eomt + loss_ood
+        loss, loss_eomt, loss_ood, logits = eomt_forward_train_with_losses(
+            model=model,
+            imgs=images_input,
+            targets_eomt=targets_eomt,
+            ood_masks=ood_masks,
+            device=device,
+            alpha=alpha,
+        )
 
         loss.backward()
         optimizer.step()
@@ -184,17 +183,6 @@ def main():
     train_loader = data_module.train_dataloader()
 
     print("Starting OE fine-tuning...")
-    
-    criterion = MaskClassificationLoss(
-        num_points=12544,
-        oversample_ratio=3.0,
-        importance_sample_ratio=0.75,
-        mask_coefficient=5.0,
-        dice_coefficient=5.0,
-        class_coefficient=2.0,
-        num_labels=19,
-        no_object_coefficient=0.1,
-    )
 
     for epoch in range(args.epochs):
         avg_loss = train_one_epoch(
@@ -202,7 +190,6 @@ def main():
             train_loader=train_loader,
             optimizer=optimizer,
             device=device,
-            criterion=criterion,
             alpha=args.alpha,
             file=file,
         )
@@ -210,7 +197,7 @@ def main():
         msg = (
             f"Epoch {epoch + 1}/{args.epochs} | "
             f"loss={avg_loss['loss']:.6f} | "
-            f"loss_seg={avg_loss['loss_seg']:.6f} | "
+            f"loss_seg={avg_loss['loss_eomt']:.6f} | "
             f"loss_ood={avg_loss['loss_ood']:.6f}"
         )
 

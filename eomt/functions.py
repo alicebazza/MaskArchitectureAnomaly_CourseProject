@@ -412,3 +412,73 @@ def ood_hinge_loss(logits, ood_mask, alpha):
 
     return loss_map[ood_mask].sum()
     # somma solo sui pixel OoD
+    
+
+# mettiamo insieme così evitiamo di fare due forward
+def eomt_forward_train_with_losses(
+    model,
+    imgs,
+    targets_eomt,
+    ood_masks,
+    device,
+    alpha=5.0,
+):
+    imgs = [img.to(device) for img in imgs]
+    img_sizes = [img.shape[-2:] for img in imgs]
+
+    crops, origins = model.window_imgs_semantic(imgs)
+
+    mask_logits_per_block, class_logits_per_block = model(crops)
+
+    losses_all_blocks = {}
+
+    for i, (mask_logits, class_logits) in enumerate(
+        zip(mask_logits_per_block, class_logits_per_block)
+    ):
+        losses = model.criterion(
+            masks_queries_logits=mask_logits,
+            class_queries_logits=class_logits,
+            targets=targets_eomt,
+        )
+
+        block_postfix = model.block_postfix(i)
+        losses = {
+            f"{key}{block_postfix}": value
+            for key, value in losses.items()
+        }
+
+        losses_all_blocks |= losses
+
+    loss_eomt = model.criterion.loss_total(losses_all_blocks, model.log)
+
+    # logits per-pixel per OE loss
+    mask_logits = F.interpolate(
+        mask_logits_per_block[-1],
+        size=(1024, 1024),
+        mode="bilinear",
+        align_corners=False,
+    )
+
+    crop_logits = model.to_per_pixel_logits_semantic(
+        mask_logits,
+        class_logits_per_block[-1],
+    )
+
+    logits = model.revert_window_logits_semantic(
+        crop_logits,
+        origins,
+        img_sizes,
+    )
+
+    if isinstance(logits, list):
+        logits = torch.stack(logits, dim=0)
+
+    loss_ood = ood_hinge_loss(
+        logits=logits,
+        ood_mask=ood_masks,
+        alpha=alpha,
+    )
+
+    loss = loss_eomt + loss_ood
+
+    return loss, loss_eomt, loss_ood, logits
