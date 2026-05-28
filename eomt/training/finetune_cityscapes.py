@@ -151,6 +151,10 @@ def main():
     
     # carica il modello
     model = load_eomt(device, config, state_dict_path)
+    model.criterion.mask_coefficient = 5.0
+    model.criterion.dice_coefficient = 5.0
+    model.criterion.class_coefficient = 2.0
+    model.criterion.eos_coef = 0.1
 
     model.to(device)
 

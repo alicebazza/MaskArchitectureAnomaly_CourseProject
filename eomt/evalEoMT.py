@@ -83,10 +83,6 @@ def main():
     
     # carica il modello
     model_EoMT = load_eomt(device, config, state_dict_path)
-    print(model_EoMT.criterion.mask_coefficient)
-    print(model_EoMT.criterion.dice_coefficient)
-    print(model_EoMT.criterion.class_coefficient)
-    print(model_EoMT.criterion.eos_coef)
         
     plots_dir = "/content/plots_eomt"
     os.makedirs(plots_dir, exist_ok=True)
