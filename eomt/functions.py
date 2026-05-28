@@ -417,11 +417,11 @@ def ood_hinge_loss(logits, ood_mask, alpha):
     ood_mask = ood_mask.to(logits.device).bool()
 
     probs = torch.tanh(logits)
-    confidence = -probs.sum(dim=1)
+    rba = -probs.sum(dim=1)
     # somma le probbailità sulle 19 classi note
     # [B, 19, H, W] -> [B, H, W]
 
-    loss_map = F.relu(alpha + confidence) ** 2
+    loss_map = F.relu(alpha - rba) ** 2
 
     if not ood_mask.any():
         return logits.new_tensor(0.0)
