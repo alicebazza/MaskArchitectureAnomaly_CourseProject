@@ -52,12 +52,12 @@ def train_one_epoch(
                 "labels": target["labels"].to(device).long(),
             }
             for target in targets
-        ]
+        ] # lista di dizionari [B, N_i, H, W]
 
         ood_masks = torch.stack(
             [target["ood_mask"].to(device).bool() for target in targets],
             dim=0,
-        )
+        ) # [B, H, W]
 
         loss, loss_eomt, loss_ood, logits = eomt_forward_train_with_losses(
             model=model,
@@ -159,7 +159,7 @@ def main():
 
     print("Freezing model...")
     freeze_model_except_final_parts(model.network)
-    print_trainable_parameters(model, file)
+    print_trainable_parameters(model.network, file)
 
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
