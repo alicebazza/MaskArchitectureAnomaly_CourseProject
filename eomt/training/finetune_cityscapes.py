@@ -38,9 +38,7 @@ def train_one_epoch(
 
     for batch_idx, batch in enumerate(train_loader):
         images, targets = batch
-
         optimizer.zero_grad()
-
         images = images.to(device)
 
         if images.dtype != torch.uint8:
@@ -64,23 +62,9 @@ def train_one_epoch(
         batch_eomt = images_input, targets_eomt
 
         loss_eomt = model.training_step(batch_eomt, batch_idx)
-
-        logits = eomt_to_pixel_logits_train(
-            images_input,
-            device,
-            model,
-        )
-
-        assert logits.shape[-2:] == ood_masks.shape[-2:], (
-            logits.shape,
-            ood_masks.shape,
-        )
-
-        loss_ood = ood_hinge_loss(
-            logits=logits,
-            ood_mask=ood_masks,
-            alpha=alpha,
-        )
+        
+        logits = eomt_to_pixel_logits_train(images_input,device,model)
+        loss_ood = ood_hinge_loss(logits=logits,ood_mask=ood_masks,alpha=alpha)
 
         loss = loss_eomt + loss_ood
 

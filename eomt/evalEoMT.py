@@ -83,7 +83,11 @@ def main():
     
     # carica il modello
     model_EoMT = load_eomt(device, config, state_dict_path)
-    
+    print("TYPE:", type(model_EoMT))
+    print("has training_step:", hasattr(model_EoMT, "training_step"))
+    print("has criterion:", hasattr(model_EoMT, "criterion"))
+    print("has block_postfix:", hasattr(model_EoMT, "block_postfix"))
+        
     plots_dir = "/content/plots_eomt"
     os.makedirs(plots_dir, exist_ok=True)
     
