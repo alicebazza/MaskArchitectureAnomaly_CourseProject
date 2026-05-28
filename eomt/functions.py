@@ -85,9 +85,9 @@ def load_eomt(device, config, state_dict_path):
     return model
     
 # Combina le predizioni finali di maschere e classi per ottenere una mappa di logit per-pixel sulle classi
-def eomt_to_pixel_logits(imgs, device, model):
+def eomt_to_pixel_logits(img, device, model):
     with torch.no_grad(), autocast(dtype=torch.float16, device_type="cuda"):
-        imgs = [img.to(device) for img in imgs]
+        imgs = [img.to(device)]
         img_sizes = [img.shape[-2:] for img in imgs]
         # prende le ultime due dimensioni del tensore (H, W)
         
