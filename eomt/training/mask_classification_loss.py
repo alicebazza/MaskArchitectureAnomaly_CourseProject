@@ -32,14 +32,14 @@ class MaskClassificationLoss(Mask2FormerLoss):
         no_object_coefficient: float,
     ):
         nn.Module.__init__(self)
-        self.num_points = num_points
+        self.num_points = num_points # punti per calcolare la mask loss
         self.oversample_ratio = oversample_ratio
         self.importance_sample_ratio = importance_sample_ratio
         self.mask_coefficient = mask_coefficient
         self.dice_coefficient = dice_coefficient
         self.class_coefficient = class_coefficient
-        self.num_labels = num_labels
-        self.eos_coef = no_object_coefficient
+        self.num_labels = num_labels # numero di classi reali
+        self.eos_coef = no_object_coefficient # peso classe no object
         empty_weight = torch.ones(self.num_labels + 1)
         empty_weight[-1] = self.eos_coef
         self.register_buffer("empty_weight", empty_weight)

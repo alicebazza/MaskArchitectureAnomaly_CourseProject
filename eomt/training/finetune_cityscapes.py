@@ -12,6 +12,7 @@ from argparse import ArgumentParser
 
 from functions import *
 from eomt.datasets.cityscapes_semantic import CityscapesSemanticOE
+from eomt.training.mask_classification_loss import MaskClassificationLoss
 
 seed = 42
 
@@ -25,15 +26,13 @@ def train_one_epoch(
     train_loader,
     optimizer,
     device,
-    lambda_oe=0.1,
-    margin=0.1,
-    ignore_index=255,
+    alpha=5.0,
     file=None,
 ):
     model.train()
 
     epoch_loss = 0.0
-    epoch_loss_seg = 0.0
+    epoch_loss_eomt = 0.0
     epoch_loss_ood = 0.0
     num_batches = 0
 
@@ -42,93 +41,64 @@ def train_one_epoch(
 
         optimizer.zero_grad()
 
-        # liste per le loss del batch
-        batch_losses = []
-        batch_seg_losses = []
-        batch_ood_losses = []
+        images = images.to(device)
 
-        for image, target in zip(images, targets):
-            image = image.to(device)
+        if images.dtype != torch.uint8:
+            images_input = (images * 255).to(torch.uint8)
+        else:
+            images_input = images
 
-            if image.dtype != torch.uint8:
-                image_input = (image * 255).to(torch.uint8)
-            else:
-                image_input = image
+        targets_eomt = [
+            {
+                "masks": target["masks"].to(device).bool(),
+                "labels": target["labels"].to(device).long(),
+            }
+            for target in targets
+        ]
 
-            logits = eomt_to_pixel_logits_train(
-                image_input,
-                device,
-                model,
-            )  # [19, H, W]
+        ood_masks = torch.stack(
+            [target["ood_mask"].to(device).bool() for target in targets],
+            dim=0,
+        )
 
-            logits_b = logits.unsqueeze(0)  # [1, 19, H, W] per cross entropy
+        batch_eomt = images_input, targets_eomt
 
-            # maschera semantica ID: [H, W], valori 0..18, ignore_index su pixel da ignorare
-            masks = target["masks"].to(device).bool()
-            labels = target["labels"].to(device).long()
+        loss_eomt = model.training_step(batch_eomt, batch_idx)
 
-            H, W = masks.shape[-2:]
+        logits = eomt_to_pixel_logits_train(
+            images_input,
+            device,
+            model,
+        )
 
-            assert logits.shape[-2:] == (H, W), (logits.shape, H, W)
+        assert logits.shape[-2:] == ood_masks.shape[-2:], (
+            logits.shape,
+            ood_masks.shape,
+        )
 
-            ood_mask = target["ood_mask"].to(device).bool()
-            assert ood_mask.shape == (H, W), (ood_mask.shape, H, W)
+        loss_ood = ood_hinge_loss(
+            logits=logits,
+            ood_mask=ood_masks,
+            alpha=alpha,
+        )
 
-            # semantic mask: [H, W]
-            sem_mask_b = torch.full(
-                (H, W),
-                fill_value=ignore_index, # inizialmente tutta a 255
-                device=device,
-                dtype=torch.long,
-            )
+        loss = loss_eomt + loss_ood
 
-            for m, label in zip(masks, labels):
-                sem_mask_b[m] = label # assegna ai pixel dell'oggetto la maschera corrispondente
-            
-
-            # maschera OoD: [H, W], bool
-            ood_mask = target["ood_mask"].to(device).bool()
-
-            # loss di segmentazione sui pixel ID
-            loss_seg = F.cross_entropy(
-                logits_b,
-                sem_mask_b.unsqueeze(0),
-                ignore_index=ignore_index,
-            )
-
-            # loss OoD sui pixel outlier
-            loss_ood = ood_hinge_loss(
-                logits=logits,
-                ood_mask=ood_mask,
-                margin=margin,
-            )
-
-            loss = loss_seg + lambda_oe * loss_ood
-
-            batch_losses.append(loss)
-            batch_seg_losses.append(loss_seg)
-            batch_ood_losses.append(loss_ood)
-
-        loss_batch = torch.stack(batch_losses).mean()
-        loss_seg_batch = torch.stack(batch_seg_losses).mean()
-        loss_ood_batch = torch.stack(batch_ood_losses).mean()
-
-        loss_batch.backward()
+        loss.backward()
         optimizer.step()
 
-        epoch_loss += loss_batch.item()
-        epoch_loss_seg += loss_seg_batch.item()
-        epoch_loss_ood += loss_ood_batch.item()
+        epoch_loss += loss.item()
+        epoch_loss_eomt += loss_eomt.item()
+        epoch_loss_ood += loss_ood.item()
         num_batches += 1
 
         if batch_idx % 20 == 0:
             msg = (
                 f"batch {batch_idx:04d} | "
-                f"loss={loss_batch.item():.6f} | "
-                f"loss_seg={loss_seg_batch.item():.6f} | "
-                f"loss_ood={loss_ood_batch.item():.6f}"
+                f"loss={loss.item():.6f} | "
+                f"loss_eomt={loss_eomt.item():.6f} | "
+                f"loss_ood={loss_ood.item():.6f}"
             )
-
             print(msg)
 
             if file is not None:
@@ -137,7 +107,7 @@ def train_one_epoch(
 
     return {
         "loss": epoch_loss / max(num_batches, 1),
-        "loss_seg": epoch_loss_seg / max(num_batches, 1),
+        "loss_eomt": epoch_loss_eomt / max(num_batches, 1),
         "loss_ood": epoch_loss_ood / max(num_batches, 1),
     }
 
@@ -163,15 +133,14 @@ def main():
         default="/content/drive/MyDrive/eomt_cityscapes_oe_finetuned.pth",
     ) # dove mettere i pesi aggiornati dopo finetuning
 
-    parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--epochs", type=int, default=2000)
+    parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--lr", type=float, default=1e-5)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--weight-decay", type=float, default=0.05)
 
-    parser.add_argument("--p-ood", type=float, default=0.5)
-    parser.add_argument("--lambda-oe", type=float, default=0.1)
-    parser.add_argument("--margin", type=float, default=0.1)
+    parser.add_argument("--p-ood", type=float, default=0.1)
+    parser.add_argument("--alpha", type=float, default=5.0)
 
     parser.add_argument("--cpu", action="store_true")
     args = parser.parse_args()
@@ -233,8 +202,7 @@ def main():
             train_loader=train_loader,
             optimizer=optimizer,
             device=device,
-            lambda_oe=args.lambda_oe,
-            margin=args.margin,
+            alpha=args.alpha,
             file=file,
         )
 

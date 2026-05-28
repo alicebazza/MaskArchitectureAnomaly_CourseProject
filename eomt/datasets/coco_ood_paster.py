@@ -12,6 +12,7 @@ class CocoOODPaster:
         split="val2017", # sottoinsieme del dataset da usare
         categories=None, # categorie di COCO da cui prendere oggetti
         target_height_range=(80, 250), # intervallo per l'altezza dell'oggetto incollato
+        num_fixed_images=300, # numero di immagini COCO
     ):
         self.coco_root = coco_root
         self.split = split
@@ -23,7 +24,7 @@ class CocoOODPaster:
         if categories is None:
             categories = [
                 "elephant", "giraffe", "zebra", "bear",
-                "couch", "chair", "toaster", "microwave",
+                "toaster", "microwave",
                 "banana", "apple", "backpack"
             ]
 
@@ -36,10 +37,7 @@ class CocoOODPaster:
         for cat_id in self.cat_ids:
             self.img_ids.extend(self.coco.getImgIds(catIds=[cat_id]))
 
-        self.img_ids = list(set(self.img_ids)) # rimuove duplicati
-
-        if len(self.img_ids) == 0:
-            raise ValueError("Nessuna immagine trovata per le categorie scelte.")
+        self.img_ids = list(set(self.img_ids))[0:300] # rimuove duplicati
 
         self.target_height_range = target_height_range
 
@@ -47,7 +45,7 @@ class CocoOODPaster:
     # metodo che estrae casualmente un oggetto dal dataset COCO
     
         img_id = random.choice(self.img_ids)
-        # sceglie casualmente un'immagine tra quelle selezionate
+        # sceglie casualmente un'immagine tra quelle selezionate (300)
         img_info = self.coco.loadImgs(img_id)[0]
         # carica le informazioni dell'immagine scelta
 

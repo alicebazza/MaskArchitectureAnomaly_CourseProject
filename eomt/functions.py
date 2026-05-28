@@ -85,9 +85,9 @@ def load_eomt(device, config, state_dict_path):
     return model
     
 # Combina le predizioni finali di maschere e classi per ottenere una mappa di logit per-pixel sulle classi
-def eomt_to_pixel_logits(img, device, model):
+def eomt_to_pixel_logits(imgs, device, model):
     with torch.no_grad(), autocast(dtype=torch.float16, device_type="cuda"):
-        imgs = [img.to(device)]
+        imgs = [img.to(device) for img in imgs]
         img_sizes = [img.shape[-2:] for img in imgs]
         # prende le ultime due dimensioni del tensore (H, W)
         
@@ -111,10 +111,11 @@ def eomt_to_pixel_logits(img, device, model):
         logits = model.revert_window_logits_semantic(crop_logits, origins, img_sizes)
 
     return logits[0]
-    
-def eomt_to_pixel_logits_train(img, device, model):
 
-    imgs = [img.to(device)]
+# modalità train
+def eomt_to_pixel_logits_train(imgs, device, model):
+
+    imgs = [img.to(device) for img in imgs]
     img_sizes = [img.shape[-2:] for img in imgs]
 
     crops, origins = model.window_imgs_semantic(imgs)
@@ -205,7 +206,7 @@ def load_ood_gt(path, size=None):
     # parte dal path dell'immagine e trova automatica la maschera corrispondente
     pathGT = path.replace("images", "labels_masks")
 
-    if "RoadObsticle21" in pathGT:
+    if "RoadObstacle21" in pathGT:
         pathGT = pathGT.replace("webp", "png")
 
     if "fs_static" in pathGT:
@@ -389,30 +390,25 @@ def print_trainable_parameters(model):
     print(f"\nTrainable params: {trainable}/{total} = {perc:.4f}%\n")
 
 
-def ood_hinge_loss(logits, ood_mask, margin=0.1):
+def ood_hinge_loss(logits, ood_mask, alpha):
     """
-    logits:   [19, H, W] oppure [1, 19, H, W]
-    ood_mask: [H, W] oppure [1, H, W]
+    logits:   [B, 19, H, W]
+    ood_mask: [B, H, W]
+    B : numero di batches
     """
-
-    if logits.dim() == 3:
-        logits = logits.unsqueeze(0)
-
-    if ood_mask.dim() == 2:
-        ood_mask = ood_mask.unsqueeze(0)
 
     ood_mask = ood_mask.to(logits.device).bool()
 
-    probs = torch.sigmoid(logits)
-    # trasformo in probabilita non esclusive (sigmoid)
-    confidence = probs.sum(dim=1)
+    probs = torch.tanh(logits)
+    confidence = -probs.sum(dim=1)
     # somma le probbailità sulle 19 classi note
     # [B, 19, H, W] -> [B, H, W]
 
-    loss_map = F.relu(confidence - margin) ** 2
+    loss_map = F.relu(alpha + confidence) ** 2
 
     if not ood_mask.any():
         return logits.new_tensor(0.0)
     # se non ci sono pixel OoD nella maschera restituisce 0
 
-    return loss_map[ood_mask].mean()
+    return loss_map[ood_mask].sum()
+    # somma solo sui pixel OoD

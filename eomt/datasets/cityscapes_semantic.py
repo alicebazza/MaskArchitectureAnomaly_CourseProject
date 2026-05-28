@@ -116,7 +116,7 @@ class CityscapesSemanticOE(CityscapesSemantic):
         self,
         path, # percorso cityscapes
         coco_root, # percorso coco
-        p_ood=0.5,
+        p_ood=0.1,
         **kwargs
     ):
         super().__init__(

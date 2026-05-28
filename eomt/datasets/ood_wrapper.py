@@ -6,7 +6,7 @@ from torchvision import tv_tensors
 # prende un dataset esistente
 # prende ogni elemento di tale dataset e con una certa probabilità lo modifica
 class OODDatasetWrapper(torch.utils.data.Dataset):
-    def __init__(self, base_dataset, paster, p_ood=0.5):
+    def __init__(self, base_dataset, paster, p_ood=0.1):
         self.base_dataset = base_dataset # dataset originale
         self.paster = paster # oggetto che sa incollare OoD su un'immagine
         self.p_ood = p_ood # probabilità di applicare il paste
@@ -44,7 +44,7 @@ class OODDatasetWrapper(torch.utils.data.Dataset):
         pasted_img = tv_tensors.Image(pasted_img)
 
         target["ood_mask"] = torch.from_numpy(ood_mask > 0)
-        # maschera booleana: i pixel con valore >1 diventano true
+        # maschera booleana: i pixel con valore >0 diventano true
         target["ood_category"] = cat_name
         # nome della categoria incollata
         
