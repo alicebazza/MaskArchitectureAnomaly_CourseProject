@@ -118,7 +118,7 @@ def main():
     ) # dove mettere i pesi aggiornati dopo finetuning
 
     parser.add_argument("--epochs", type=int, default=2000)
-    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
@@ -159,6 +159,7 @@ def main():
 
     print("Freezing model...")
     freeze_model_except_final_parts(model.network)
+    print_trainable_parameters(model, file)
 
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),

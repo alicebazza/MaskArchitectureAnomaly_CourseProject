@@ -373,22 +373,39 @@ def freeze_model_except_final_parts(model):
     print_trainable_parameters(model)
 
 
-def print_trainable_parameters(model):
+def print_trainable_parameters(model, file=None):
     trainable = 0
     total = 0
 
-    print("\nTrainable parameters:")
+    msg = "\nTrainable parameters:\n"
+    print(msg, end="")
+    
+    if file is not None:
+        file.write(msg)
+
     for name, param in model.named_parameters():
-    # scorre tutti i parametri del modello
         total += param.numel()
+
         if param.requires_grad:
-        # controlla se il parametro è trainabile
             trainable += param.numel()
+
             print(name)
 
-    perc = 100.0 * trainable / total
-    print(f"\nTrainable params: {trainable}/{total} = {perc:.4f}%\n")
+            if file is not None:
+                file.write(name + "\n")
 
+    perc = 100.0 * trainable / total
+    summary = (
+        f"\nTrainable params: "
+        f"{trainable}/{total} = {perc:.4f}%\n"
+    )
+
+    print(summary)
+
+    if file is not None:
+        file.write(summary)
+        file.flush()
+        
 
 def ood_hinge_loss(logits, ood_mask, alpha):
     """
