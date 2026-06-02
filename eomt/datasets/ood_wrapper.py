@@ -2,7 +2,7 @@ import random
 import numpy as np
 import torch
 from torchvision import tv_tensors
-from coco_ood_paster import CocoOODPaster
+from eomt.datasets.coco_ood_paster import CocoOODPaster
 
 # target è un dizionario
 # target = {
