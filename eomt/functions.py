@@ -31,10 +31,20 @@ NUM_CLASSES = 20
 IGNORE_INDEX = 255
 
 
-# costruisce il modello a partire da una configurazione config, carica i pesi
-# salvati da state_dict_path, sposta il modello su CPU/GPU
-# e restituisce il modello pronto per inferenza
-def load_eomt(device, config, state_dict_path):
+def load_eomt(device: str | torch.device, config: dict[str, Any], state_dict_path: str) -> torch.nn.Module:
+    """
+    Input:
+        device: dispositivo su cui caricare il modello.
+        config: dizionario di configurazione del modello.
+        state_dict_path: percorso del file contenente i pesi salvati.
+
+    Output:
+        model: modello caricato, in modalità eval e spostato sul device scelto.
+
+    Cosa fa:
+        Costruisce encoder, network e modulo Lightning a partire dalla configurazione,
+        carica i pesi dal file indicato e restituisce il modello pronto per inferenza.
+    """
     # Load encoder
     encoder_cfg = config["model"]["init_args"]["network"]["init_args"]["encoder"]
     encoder_module_name, encoder_class_name = encoder_cfg["class_path"].rsplit(".", 1)
@@ -84,8 +94,20 @@ def load_eomt(device, config, state_dict_path):
 
     return model
     
-# Combina le predizioni finali di maschere e classi per ottenere una mappa di logit per-pixel sulle classi
-def eomt_to_pixel_logits(img, device, model):
+def eomt_to_pixel_logits(img: torch.Tensor, device: str | torch.device, model: torch.nn.Module) -> torch.Tensor:
+    """
+    Input:
+        img: immagine di input come tensore PyTorch.
+        device: dispositivo su cui eseguire l'inferenza.
+        model: modello EoMT già caricato.
+
+    Output:
+        logits: tensore dei logits per-pixel con dimensione (C, H, W).
+
+    Cosa fa:
+        Divide l'immagine in crop, applica il modello, combina logits di maschere
+        e classi, poi ricompone i logits nella dimensione originale dell'immagine.
+    """
     with torch.no_grad(), autocast(dtype=torch.float16, device_type="cuda"):
         imgs = [img.to(device)]
         img_sizes = [img.shape[-2:] for img in imgs]
@@ -114,23 +136,18 @@ def eomt_to_pixel_logits(img, device, model):
 
 
 # più il modello è incerto ---> più probabile che ci sia un'anomalia
-def anomaly_scores(logits, use_rba=False):
+def anomaly_scores(logits: torch.Tensor, use_rba: bool = False) -> list[torch.Tensor]:
     """
-    Calcola diverse mappe di anomaly score a partire dai logits per pixel.
-
-    Score calcolati:
-        - MSP (Maximum Softmax Probability)
-        - MaxLogit
-        - Entropy (normalizzata)
-        - RBA (opzionale)
-
     Input:
-        logits (torch.Tensor): tensore di dimensione (C, H, W) contenente i logits
-            (output grezzo della rete, prima della softmax)
-        use_rba (bool): se True, calcola anche lo score RBA
+        logits: tensore di dimensione (C, H, W) contenente i logits per-pixel.
+        use_rba: se True, aggiunge anche lo score RBA alla lista degli score.
 
     Output:
-        scores (list of torch.Tensor): lista di mappe (H, W), una per ogni anomaly score
+        scores: lista di tensori di dimensione (H, W), uno per ogni anomaly score.
+
+    Cosa fa:
+        Calcola diverse mappe di anomaly score a partire dai logits: MSP,
+        MaxLogit, entropia normalizzata e, opzionalmente, RBA.
     """
 
     # probabilità tramite softmax sui logits
@@ -160,17 +177,19 @@ def anomaly_scores(logits, use_rba=False):
     return scores
    
 
-def load_ood_gt(path, size=None):
+def load_ood_gt(path: str, size: tuple[int, int] | int | None = None) -> np.ndarray:
     """
-    Carica la maschera ground truth (OOD) a partire dal percorso dell'immagine.
-    Costruisce automaticamente il path della maschera e applica trasformazioni
-    specifiche a seconda del dataset
-
     Input:
-        path (str): percorso dell'immagine di input
+        path: percorso dell'immagine di input.
+        size: dimensione finale della maschera dopo il resize.
 
     Output:
-        ood_gts (np.ndarray): maschera OOD come array numpy
+        ood_gts: maschera OOD come array NumPy.
+
+    Cosa fa:
+        Costruisce automaticamente il percorso della maschera ground truth a partire
+        dal percorso dell'immagine, la carica, la ridimensiona e normalizza le label
+        in base al dataset.
     """
     # parte dal path dell'immagine e trova automatica la maschera corrispondente
     pathGT = path.replace("images", "labels_masks")
@@ -209,21 +228,21 @@ def load_ood_gt(path, size=None):
     return ood_gts
 
 
-def eval_score(ood_gts_list, anomaly_score_list):
+def eval_score(ood_gts_list: list[np.ndarray], anomaly_score_list: list[np.ndarray]) -> tuple[float, float]:
     """
-    Valuta le mappe di anomaly score confrontandole con le maschere ground truth OOD.
-    Estrae separatamente gli score sui pixel normali e anomali, costruisce le etichette
-    binarie corrispondenti e calcola le metriche AP/AUPRC e FPR@95TPR.
-
     Input:
-        ood_gts_list: lista di maschere ground truth OOD,
-            con valori 0 = in-distribution e 1 = OOD
-        anomaly_score_list: lista di mappe di anomaly score,
-            una per immagine, con dimensioni compatibili con le maschere
+        ood_gts_list: lista di maschere ground truth OOD, con valori
+            0 = in-distribution e 1 = OOD.
+        anomaly_score_list: lista di mappe di anomaly score, una per immagine,
+            con dimensioni compatibili con le maschere.
 
     Output:
-        prc_auc (float): Average Precision / area sotto la Precision-Recall curve
-        fpr (float): false positive rate quando il true positive rate è al 95%
+        prc_auc: Average Precision, cioè area sotto la curva Precision-Recall.
+        fpr: false positive rate quando il true positive rate è al 95%.
+
+    Cosa fa:
+        Estrae gli score sui pixel normali e anomali, costruisce le etichette
+        binarie corrispondenti e calcola AP/AUPRC e FPR@95TPR.
     """
     ood_gts = np.array(ood_gts_list) # dim (N,H,W) con N = numero di immagini
     anomaly_scores = np.array(anomaly_score_list)

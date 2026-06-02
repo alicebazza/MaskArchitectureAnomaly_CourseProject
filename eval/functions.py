@@ -32,16 +32,22 @@ NUM_CLASSES = 20
 IGNORE_INDEX = 255
 
 
-def load_my_state_dict(model, state_dict):
+def load_my_state_dict(
+    model: torch.nn.Module,
+    state_dict: dict[str, torch.Tensor],
+) -> torch.nn.Module:
     """
-    Carica manualmente i pesi (state_dict) in un modello PyTorch esistente.
-
     Input:
-        model (torch.nn.Module): modello già istanziato (architettura definita)
-        state_dict (dict): dizionario dei pesi da caricare (nome -> tensore)
+        model: modello PyTorch gia istanziato.
+        state_dict: dizionario dei pesi da caricare, con nome del parametro
+            come chiave e tensore come valore.
 
     Output:
-        model (torch.nn.Module): modello con i pesi aggiornati
+        model: modello PyTorch con i pesi aggiornati.
+
+    Cosa fa:
+        Carica manualmente i pesi in un modello PyTorch, gestendo anche il
+        caso in cui i nomi dei parametri siano preceduti da "module.".
     """
     own_state = model.state_dict()
     for name, param in state_dict.items():
@@ -56,16 +62,19 @@ def load_my_state_dict(model, state_dict):
     return model
 
 
-def extract_state_dict(checkpoint):
+def extract_state_dict(checkpoint: dict[str, Any]) -> dict[str, torch.Tensor]:
     """
-    Estrae lo state_dict da un checkpoint salvato in formati diversi.
-    Supporta checkpoint con diverse chiavi
-
     Input:
-        checkpoint (dict): oggetto caricato da torch.load()
+        checkpoint: dizionario caricato da torch.load(), eventualmente
+            contenente uno state_dict sotto una chiave specifica.
 
     Output:
-        state_dict (dict): dizionario dei pesi (nome -> tensore)
+        state_dict: dizionario dei pesi del modello, con nome del parametro
+            come chiave e tensore come valore.
+
+    Cosa fa:
+        Estrae lo state_dict da checkpoint salvati in formati diversi,
+        controllando prima le chiavi "state_dict" e "model".
     """
     if "state_dict" in checkpoint:
         return checkpoint["state_dict"]
@@ -76,20 +85,19 @@ def extract_state_dict(checkpoint):
     return checkpoint
     
 
-def load_erfnet(args, device):
+def load_erfnet(args: Any, device: torch.device) -> torch.nn.Module:
     """
-    Istanzia il modello ERFNet e carica i pesi salvati da checkpoint.
-
     Input:
-        args: oggetto contenente i parametri del programma, in particolare:
-            - loadDir: directory contenente i pesi
-            - erfnetWeights: nome del file dei pesi
-        device (torch.device): dispositivo su cui caricare il modello
-            (CPU oppure CUDA)
+        args: oggetto contenente i parametri del programma, in particolare
+            loadDir ed erfnetWeights.
+        device: dispositivo PyTorch su cui caricare il modello, CPU o CUDA.
 
     Output:
-        model (torch.nn.Module): modello ERFNet pronto per l'inferenza
-            con i pesi caricati
+        model: modello ERFNet pronto per l'inferenza con i pesi caricati.
+
+    Cosa fa:
+        Istanzia ERFNet, carica i pesi da checkpoint, sposta il modello sul
+        dispositivo richiesto e lo imposta in modalita di valutazione.
     """
     erfnet_weightspath = osp.join(args.loadDir, args.erfnetWeights)
     # percorso del file dei pesi
@@ -115,22 +123,22 @@ def load_erfnet(args, device):
     
 
 # più il modello è incerto ---> più probabile che ci sia un'anomalia
-def anomaly_scores(logits, use_rba=False):
+def anomaly_scores(
+    logits: torch.Tensor,
+    use_rba: bool = False,
+) -> list[torch.Tensor]:
     """
-    Calcola diverse mappe di anomaly score a partire dai logits per pixel.
-
-    Score calcolati:
-        - MSP (Maximum Softmax Probability)
-        - MaxLogit
-        - Entropy (normalizzata)
-        - RBA (opzionale)
-
     Input:
-        logits (torch.Tensor): tensore di dimensione (C, H, W) contenente i logits
-        use_rba (bool): se True, calcola anche lo score RBA
+        logits: tensore di dimensione (C, H, W) contenente i logits per pixel.
+        use_rba: booleano che indica se calcolare anche lo score RBA.
 
     Output:
-        scores (list of torch.Tensor): lista di mappe (H, W), una per ogni anomaly score
+        scores: lista di tensori di dimensione (H, W), uno per ogni anomaly
+            score calcolato.
+
+    Cosa fa:
+        Calcola mappe di anomaly score a partire dai logits: MSP, MaxLogit,
+        Entropy normalizzata e, opzionalmente, RBA.
     """
 
     # probabilità tramite softmax sui logits
@@ -160,17 +168,19 @@ def anomaly_scores(logits, use_rba=False):
     return scores
    
 
-def load_ood_gt(path, size = None):
+def load_ood_gt(path: str, size: tuple[int, int] | None = None) -> np.ndarray:
     """
-    Carica la maschera ground truth (OOD) a partire dal percorso dell'immagine.
-    Costruisce automaticamente il path della maschera e applica trasformazioni
-    specifiche a seconda del dataset
-
     Input:
-        path (str): percorso dell'immagine di input
+        path: percorso dell'immagine di input.
+        size: dimensione a cui ridimensionare la maschera, oppure None.
 
     Output:
-        ood_gts (np.ndarray): maschera OOD come array numpy
+        ood_gts: maschera OOD come array NumPy.
+
+    Cosa fa:
+        Ricava il percorso della maschera ground truth a partire dal percorso
+        dell'immagine, la carica, la ridimensiona e normalizza le etichette in
+        base al dataset.
     """
     # parte dal path dell'immagine e trova automatica la maschera corrispondente
     pathGT = path.replace("images", "labels_masks")
@@ -209,21 +219,24 @@ def load_ood_gt(path, size = None):
     return ood_gts
 
 
-def eval_score(ood_gts_list, anomaly_score_list):
+def eval_score(
+    ood_gts_list: list[np.ndarray],
+    anomaly_score_list: list[np.ndarray],
+) -> tuple[float, float]:
     """
-    Valuta le mappe di anomaly score confrontandole con le maschere ground truth OOD.
-    Estrae separatamente gli score sui pixel normali e anomali, costruisce le etichette
-    binarie corrispondenti e calcola le metriche AP/AUPRC e FPR@95TPR.
-
     Input:
-        ood_gts_list: lista di maschere ground truth OOD,
-            con valori 0 = in-distribution e 1 = OOD
-        anomaly_score_list: lista di mappe di anomaly score,
-            una per immagine, con dimensioni compatibili con le maschere
+        ood_gts_list: lista di maschere ground truth OOD, con valori
+            0 = in-distribution e 1 = OOD.
+        anomaly_score_list: lista di mappe di anomaly score, una per immagine,
+            con dimensioni compatibili con le maschere.
 
     Output:
-        prc_auc (float): Average Precision / area sotto la Precision-Recall curve
-        fpr (float): false positive rate quando il true positive rate è al 95%
+        prc_auc: Average Precision, cioe area sotto la curva Precision-Recall.
+        fpr: false positive rate quando il true positive rate e al 95%.
+
+    Cosa fa:
+        Confronta gli anomaly score con le maschere OOD, costruisce le etichette
+        binarie pixel-wise e calcola AP/AUPRC e FPR@95TPR.
     """
     ood_gts = np.array(ood_gts_list) # dim (N,H,W) con N = numero di immagini
     anomaly_scores = np.array(anomaly_score_list)
