@@ -1,0 +1,36 @@
+trainer:
+  max_epochs: 3
+  logger:
+    class_path: lightning.pytorch.loggers.wandb.WandbLogger
+    init_args:
+      resume: allow
+      project: "eomt"
+      name: "cityscapes_semantic_eomt_base_640_oe"
+
+model:
+  class_path: training.mask_classification_semantic_oe.MaskClassificationSemanticOE
+  init_args:
+    lambda_rba: 0.1
+    rba_alpha: 5.0
+    rba_reduction: sum
+    freeze_heads_only: True
+    attn_mask_annealing_enabled: True
+    attn_mask_annealing_start_steps: [3317, 8292, 13268]
+    attn_mask_annealing_end_steps: [6634, 11609, 16585]
+    network:
+      class_path: models.eomt.EoMT
+      init_args:
+        num_q: 100
+        num_blocks: 3
+        encoder:
+          class_path: models.vit.ViT
+          init_args:
+            backbone_name: vit_base_patch14_reg4_dinov2
+
+data:
+  class_path: datasets.cityscapes_semantic_oe.CityscapesSemanticOE
+  init_args:
+    coco_root: null
+    p_ood: 0.1
+    coco_split: val2017
+    ood_target_height_range: [80, 250]
