@@ -28,7 +28,7 @@ model:
             backbone_name: vit_base_patch14_reg4_dinov2
 
 data:
-  class_path: datasets.cityscapes_semantic_oe.CityscapesSemanticOE
+  class_path: eomt.datasets.cityscapes_semantic_oe.CityscapesSemanticOE
   init_args:
     coco_root: null
     p_ood: 0.1
