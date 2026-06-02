@@ -8,13 +8,19 @@
 
 
 import jsonargparse._typehints as _t
+import os
 from types import MethodType
+from pathlib import Path
 from gitignore_parser import parse_gitignore
 import logging
 import torch
 import warnings
 from lightning.pytorch import cli
-from lightning.pytorch.callbacks import ModelSummary, LearningRateMonitor
+from lightning.pytorch.callbacks import (
+    LearningRateMonitor,
+    ModelCheckpoint,
+    ModelSummary,
+)
 from lightning.pytorch.loops.training_epoch_loop import _TrainingEpochLoop
 from lightning.pytorch.loops.fetchers import _DataFetcher, _DataLoaderIterDataFetcher
 
@@ -24,6 +30,28 @@ from datasets.lightning_data_module import LightningDataModule
 # Suppress PyTorch FX warnings for DINOv3 models
 import os
 os.environ["TORCH_LOGS"] = "-dynamo"
+
+
+def _default_run_root() -> Path:
+    """
+    Usa Drive su Colab se disponibile, per salvare log e checkpoint.
+    """
+
+    colab_drive = Path("/content/drive/MyDrive")
+    if colab_drive.exists():
+        return colab_drive / "eomt_runs"
+    return Path.cwd() / "eomt_runs"
+
+
+def _find_model_checkpoint_callback(trainer) -> ModelCheckpoint | None:
+    """
+    Cerca il callback ModelCheckpoint tra quelli registrati dal trainer.
+    """
+
+    for callback in trainer.callbacks:
+        if isinstance(callback, ModelCheckpoint):
+            return callback
+    return None
 
 
 _orig_single = _t.raise_unexpected_value
@@ -48,7 +76,7 @@ def _raise_union(subtypes, val, vals):
 _t.raise_unexpected_value = _raise_single
 _t.raise_union_unexpected_value = _raise_union
 
-
+# ridefinisce quando Lightning deve fare validazione
 def _should_check_val_fx(self: _TrainingEpochLoop, data_fetcher: _DataFetcher) -> bool:
     if not self._should_check_val_epoch():
         return False
@@ -112,6 +140,11 @@ class LightningCLI(cli.LightningCLI):
 
     def add_arguments_to_parser(self, parser):
         parser.add_argument("--compile_disabled", action="store_true")
+        parser.add_argument(
+            "--resume_disabled",
+            action="store_true",
+            help="Disabilita il resume automatico dall'ultimo checkpoint trovato.",
+        )
 
         parser.link_arguments(
             "data.init_args.num_classes", "model.init_args.num_classes"
@@ -147,12 +180,28 @@ class LightningCLI(cli.LightningCLI):
                 ".", include_fn=include_fn, exclude_fn=is_gitignored
             )
 
+        checkpoint_callback = _find_model_checkpoint_callback(self.trainer)
+        if checkpoint_callback is not None:
+            run_name = getattr(self.trainer.logger, "name", "default_run")
+            checkpoint_dir = _default_run_root() / "checkpoints" / run_name
+            checkpoint_callback.dirpath = str(checkpoint_dir)
+            checkpoint_callback.FILE_EXTENSION = ".ckpt"
+
         self.trainer.fit_loop.epoch_loop._should_check_val_fx = MethodType(
             _should_check_val_fx, self.trainer.fit_loop.epoch_loop
         )
 
         if not self.config[self.config["subcommand"]]["compile_disabled"]:
             model = torch.compile(model)
+
+        # Se esiste un last.ckpt nella cartella del checkpoint, ripartiamo da lì.
+        if not self.config[self.config["subcommand"]]["resume_disabled"]:
+            checkpoint_callback = _find_model_checkpoint_callback(self.trainer)
+            if checkpoint_callback is not None and checkpoint_callback.dirpath is not None:
+                last_checkpoint = Path(checkpoint_callback.dirpath) / "last.ckpt"
+                if last_checkpoint.exists() and kwargs.get("ckpt_path") is None:
+                    logging.info(f"Resuming from checkpoint: {last_checkpoint}")
+                    kwargs["ckpt_path"] = str(last_checkpoint)
 
         self.trainer.fit(model, **kwargs)
 
@@ -168,9 +217,17 @@ def cli_main():
         trainer_defaults={
             "precision": "16-mixed",
             "enable_model_summary": False,
+            "default_root_dir": str(_default_run_root()),
             "callbacks": [
                 ModelSummary(max_depth=3),
                 LearningRateMonitor(logging_interval="epoch"),
+                ModelCheckpoint(
+                    dirpath=str(_default_run_root() / "checkpoints" / "pending_run"),
+                    filename="epoch{epoch:03d}-step{step:06d}",
+                    save_last=True,
+                    save_top_k=-1,
+                    every_n_epochs=1,
+                ),
             ],
             "devices": 1,
             "gradient_clip_val": 0.01,
