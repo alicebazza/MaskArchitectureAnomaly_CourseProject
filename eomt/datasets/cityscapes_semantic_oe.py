@@ -14,6 +14,7 @@ from eomt.datasets.dataset import Dataset
 from eomt.datasets.transforms import Transforms
 from eomt.datasets.coco_ood_paster import CocoOODPaster
 from eomt.datasets.ood_wrapper import OODDatasetWrapper
+from eomt.datasets.cityscapes_semantic import CityscapesSemantic
 
 
 class CityscapesSemanticOE(CityscapesSemantic):
