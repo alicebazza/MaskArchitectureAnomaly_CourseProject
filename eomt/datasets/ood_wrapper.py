@@ -65,27 +65,27 @@ class OODDatasetWrapper(torch.utils.data.Dataset):
         self.p_ood = p_ood # probabilità di applicare il paste
 
     def __len__(self):
-    """Restituisce la lunghezza del dataset base."""
+        """Restituisce la lunghezza del dataset base."""
         return len(self.base_dataset)
         # il wrapper ha la stessa lunghezza del dataset originale
 
     def __getitem__(self, idx):
-    """
-    Input:
-        idx: indice dell'elemento da recuperare dal dataset.
+        """
+        Input:
+            idx: indice dell'elemento da recuperare dal dataset.
 
-    Output:
-        img: immagine originale oppure modificata con un oggetto OoD.
-        target: dizionario delle annotazioni aggiornato con:
-            - maschere eventualmente corrette dopo l'occlusione OoD;
-            - "ood_mask": maschera booleana dei pixel OoD;
-            - "ood_category": categoria dell'oggetto OoD incollato
-              (oppure None se non è stato applicato alcun paste).
+        Output:
+            img: immagine originale oppure modificata con un oggetto OoD.
+            target: dizionario delle annotazioni aggiornato con:
+                - maschere eventualmente corrette dopo l'occlusione OoD;
+                - "ood_mask": maschera booleana dei pixel OoD;
+                - "ood_category": categoria dell'oggetto OoD incollato
+                  (oppure None se non è stato applicato alcun paste).
 
-    Cosa fa:
-        Recupera un campione dal dataset originale e, con probabilità p_ood,
-        incolla un oggetto out-of-distribution sull'immagine.
-    """
+        Cosa fa:
+            Recupera un campione dal dataset originale e, con probabilità p_ood,
+            incolla un oggetto out-of-distribution sull'immagine.
+        """
     
         img, target = self.base_dataset[idx]
         # immagini e annotazioni del dataset originale
