@@ -342,25 +342,30 @@ def print_global_metrics(metric_storage):
 
 def save_class_metrics_csv(metric_storage, output_dir):
     """
-    Salva su CSV le metriche OOD condizionate alla classe predetta.
+    Salva su CSV le metriche OOD per classe predetta.
 
-    Ogni riga identifica una coppia:
-        classe Cityscapes predetta, anomaly score.
-
-    Le colonne principali sono:
-        valid_pixels: pixel validi predetti come quella classe;
-        ood_pixels: tra questi, pixel OOD secondo la ground truth;
-        id_pixels: tra questi, pixel in-distribution;
-        auprc: AUPRC per distinguere OOD da ID dentro quella classe;
-        fpr_at_tpr95: FPR al 95% di TPR dentro quella classe.
+    ```
+    Una riga per ogni classe Cityscapes.
+    Per ciascuno score vengono riportati:
+        - AUPRC
+        - FPR@TPR95
     """
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "ood_metrics_by_predicted_class.csv"
 
     fieldnames = [
-        "class_id", "class_name", "valid_pixels", "ood_pixels", "id_pixels",
-        "ood_pixel_percentage", "score", "auprc", "fpr_at_tpr95",
+        "class_id",
+        "class_name",
+        "msp_auprc",
+        "msp_fpr_at_tpr95",
+        "maxlogit_auprc",
+        "maxlogit_fpr_at_tpr95",
+        "entropy_auprc",
+        "entropy_fpr_at_tpr95",
+        "rba_auprc",
+        "rba_fpr_at_tpr95",
     ]
 
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -368,29 +373,30 @@ def save_class_metrics_csv(metric_storage, output_dir):
         writer.writeheader()
 
         for class_id, class_storage in metric_storage["by_predicted_class"].items():
-            valid_pixels = class_storage["valid_pixels"]
-            if valid_pixels == 0:
+
+            if class_storage["valid_pixels"] == 0:
                 continue
 
-            ood_percentage = 100.0 * class_storage["ood_pixels"] / valid_pixels
+            row = {
+                "class_id": class_id,
+                "class_name": CITYSCAPES_CLASSES[class_id],
+            }
+
             for score_name in SCORE_NAMES:
                 auprc, fpr = safe_eval_score(
                     class_storage["ood_gts"],
                     class_storage["scores"][score_name],
                 )
-                writer.writerow(
-                    {
-                        "class_id": class_id,
-                        "class_name": CITYSCAPES_CLASSES[class_id],
-                        "valid_pixels": valid_pixels,
-                        "ood_pixels": class_storage["ood_pixels"],
-                        "id_pixels": class_storage["id_pixels"],
-                        "ood_pixel_percentage": ood_percentage,
-                        "score": score_name,
-                        "auprc": "" if auprc is None else auprc,
-                        "fpr_at_tpr95": "" if fpr is None else fpr,
-                    }
+
+                row[f"{score_name}_auprc"] = (
+                    "" if auprc is None else auprc
                 )
+                row[f"{score_name}_fpr_at_tpr95"] = (
+                    "" if fpr is None else fpr
+                )
+
+            writer.writerow(row)
+
     print("Salvo CSV in:", csv_path)
     return csv_path
 
