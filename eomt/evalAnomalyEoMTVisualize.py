@@ -391,7 +391,7 @@ def save_class_metrics_csv(metric_storage, output_dir):
                         "fpr_at_tpr95": "" if fpr is None else fpr,
                     }
                 )
-
+    print("Salvo CSV in:", csv_path)
     return csv_path
 
 
