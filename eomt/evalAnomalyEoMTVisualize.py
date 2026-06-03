@@ -84,9 +84,6 @@ INPUT_TRANSFORM = Compose([Resize(IMAGE_SIZE, Image.BILINEAR), ToTensor()])
 def resolve_device(device_argument):
     """
     Decide se usare CPU o GPU.
-
-    Se l'utente specifica esplicitamente --device, viene rispettata quella scelta.
-    Altrimenti lo script usa CUDA quando disponibile, e CPU in caso contrario.
     """
     if device_argument is not None:
         return device_argument
@@ -96,14 +93,6 @@ def resolve_device(device_argument):
 def load_eomt_model(config_path, state_dict_path, device_argument=None):
     """
     Carica configurazione, pesi e modello EoMT.
-
-    La funzione imposta anche un seed fisso, così da rendere più riproducibili
-    eventuali componenti stocastiche. Il modello viene costruito dalla funzione
-    esterna load_eomt, definita in functions.py.
-
-    Restituisce:
-        model: modello EoMT pronto per inferenza;
-        device: stringa "cpu" o "cuda".
     """
     if seed_everything is not None:
         seed_everything(0, verbose=False)
@@ -128,10 +117,6 @@ def load_eomt_model(config_path, state_dict_path, device_argument=None):
 def load_image(image_path, device):
     """
     Carica una immagine RGB e la converte nel formato atteso da EoMT.
-
-    La trasformazione standardizza la dimensione a IMAGE_SIZE e produce un tensore
-    C x H x W. In questo codice EoMT riceve valori uint8 in scala [0, 255], non
-    float normalizzati in [0, 1].
     """
     original_image = Image.open(image_path).convert("RGB")
     image_tensor = INPUT_TRANSFORM(original_image).float()
@@ -142,11 +127,6 @@ def load_image(image_path, device):
 def compute_pixel_logits(image_path, model, device):
     """
     Esegue l'inferenza EoMT su una singola immagine.
-
-    I logits pixel-wise sono l'output principale del modello: vengono usati sia
-    per ottenere la predizione semantica Cityscapes, sia per calcolare gli anomaly
-    score. La funzione disattiva il calcolo dei gradienti perché siamo in fase di
-    evaluation, non di training.
     """
     image_tensor = load_image(image_path, device)
     with torch.no_grad():
@@ -169,13 +149,6 @@ def compute_semantic_prediction(pixel_logits):
 def compute_anomaly_score_maps(pixel_logits):
     """
     Calcola le mappe di anomaly score a partire dai logits semantici.
-
-    Gli score usati sono:
-        msp: 1 - massima probabilità softmax;
-        maxlogit: opposto del massimo logit;
-        entropy: entropia della distribuzione softmax;
-        rba: score RBA calcolato dalla funzione anomaly_scores.
-
     Restituisce un dizionario score_name -> mappa H x W.
     """
     msp, maxlogit, entropy, rba = anomaly_scores(pixel_logits.detach().cpu(), use_rba=True)
@@ -202,9 +175,6 @@ def load_ood_ground_truth(image_path):
 def cityscapes_mapping():
     """
     Crea il mapping classe Cityscapes -> colore RGB.
-
-    Serve solo per visualizzare la predizione semantica in modo leggibile.
-    I colori vengono normalizzati in [0, 1], come richiesto da matplotlib.
     """
     return {
         class_id: CITYSCAPES_PALETTE[class_id].astype(np.float32) / 255.0
@@ -217,8 +187,7 @@ def apply_colormap(mask, mapping):
     Trasforma una maschera di interi in una immagine RGB.
 
     Ogni valore della maschera viene interpretato come una classe e sostituito
-    con il colore corrispondente nel dizionario mapping. Classi non presenti nel
-    mapping vengono visualizzate in nero.
+    con il colore corrispondente nel dizionario mapping. 
     """
     colored = np.zeros((*mask.shape, 3), dtype=np.float32)
     for class_id in np.unique(mask):
@@ -229,9 +198,6 @@ def apply_colormap(mask, mapping):
 def tensor_to_numpy_image(image_tensor):
     """
     Converte un tensore immagine PyTorch in un array NumPy visualizzabile.
-
-    L'input ha forma C x H x W; l'output ha forma H x W x C. Se i valori sono
-    in scala [0, 255], vengono riportati in [0, 1].
     """
     image_np = image_tensor.detach().cpu().permute(1, 2, 0).numpy()
     if image_np.max() > 1.0:
@@ -242,10 +208,6 @@ def tensor_to_numpy_image(image_tensor):
 def plot_prediction_vs_gt(image_tensor, prediction, ood_gt, save_path):
     """
     Salva una figura con immagine, predizione semantica e ground truth OOD.
-
-    Questa visualizzazione serve per controllare qualitativamente se la classe
-    semantica predetta da EoMT è ragionevole e dove si trovano i pixel anomali
-    secondo la ground truth.
     """
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     axes[0].imshow(tensor_to_numpy_image(image_tensor))
@@ -267,10 +229,6 @@ def plot_prediction_vs_gt(image_tensor, prediction, ood_gt, save_path):
 def plot_anomaly_scores(image_tensor, score_maps, save_path):
     """
     Salva una figura con immagine originale e mappe di anomaly score.
-
-    Le mappe mostrano dove ciascun criterio assegna un valore alto di anomalia.
-    Sono utili per confrontare qualitativamente MSP, MaxLogit, Entropy e RBA
-    sulla stessa immagine.
     """
     fig, axes = plt.subplots(1, 5, figsize=(22, 5))
     axes[0].imshow(tensor_to_numpy_image(image_tensor))
@@ -297,9 +255,6 @@ def create_metric_storage():
         global: metriche calcolate su tutti i pixel validi del dataset;
         by_predicted_class: metriche calcolate separatamente sui pixel che EoMT
         ha assegnato a ciascuna classe Cityscapes.
-
-    La seconda parte serve a capire se il detector OOD funziona meglio o peggio
-    quando il modello interpreta i pixel come road, car, person, building, ecc.
     """
     return {
         "global": {
@@ -327,9 +282,6 @@ def add_metrics_for_image(ood_gt, prediction, score_maps, metric_storage):
     Per le metriche per classe, i pixel vengono prima separati in base alla classe
     semantica predetta da EoMT, poi per ciascuna classe si raccolgono GT OOD/ID e
     anomaly score.
-
-    Una classe contribuisce alle metriche solo se contiene sia pixel OOD sia pixel
-    ID; altrimenti AUPRC e FPR@TPR95 non sono ben definiti per quella classe.
     """
     valid_mask = ood_gt != IGNORE_INDEX
     if not np.any(valid_mask):
@@ -362,10 +314,6 @@ def add_metrics_for_image(ood_gt, prediction, score_maps, metric_storage):
 def safe_eval_score(ood_gts, scores):
     """
     Calcola AUPRC e FPR@TPR95 gestendo i casi non valutabili.
-
-    eval_score può fallire se mancano esempi positivi o negativi. In quel caso
-    la funzione restituisce (None, None), così il resto dello script può continuare
-    e lasciare vuote le metriche non definite.
     """
     if len(ood_gts) == 0:
         return None, None
@@ -378,9 +326,6 @@ def safe_eval_score(ood_gts, scores):
 def print_global_metrics(metric_storage):
     """
     Stampa le metriche OOD globali per ogni anomaly score.
-
-    Queste sono le metriche standard sull'intero dataset, senza distinguere per
-    classe semantica predetta.
     """
     print("\nMetriche globali OOD")
     for score_name in SCORE_NAMES:
@@ -483,14 +428,6 @@ def process_image(image_path, model, device, output_dir, metric_storage, save_sc
     """
     Processa una singola immagine dall'inizio alla fine.
 
-    Per ogni immagine esegue:
-        1. inferenza EoMT;
-        2. predizione semantica;
-        3. caricamento ground truth OOD;
-        4. calcolo anomaly score;
-        5. salvataggio visualizzazione prediction-vs-GT;
-        6. eventuale salvataggio delle mappe di score;
-        7. aggiornamento delle metriche globali e per classe.
     """
     image_tensor, pixel_logits = compute_pixel_logits(image_path, model, device)
     prediction = compute_semantic_prediction(pixel_logits)
@@ -521,10 +458,6 @@ def collect_image_paths(input_pattern):
     """
     Restituisce la lista di immagini da processare.
 
-    L'input può essere un path singolo oppure un glob pattern, per esempio:
-        /data/RoadAnomaly/images/*.jpg
-
-    La lista viene ordinata per rendere l'esecuzione riproducibile.
     """
     expanded = os.path.expanduser(str(input_pattern))
     if os.path.isfile(expanded):
@@ -533,14 +466,6 @@ def collect_image_paths(input_pattern):
 
 
 def main():
-    """
-    Entry point dello script da riga di comando.
-
-    Carica il modello, raccoglie le immagini, processa il dataset e infine stampa
-    o salva le metriche. Le opzioni principali permettono di scegliere input,
-    cartella di output, configurazione, pesi del modello, device e salvataggio
-    delle mappe di anomaly score.
-    """
     parser = ArgumentParser()
     parser.add_argument("--input", required=True, help="Path singolo o glob delle immagini da processare.")
     parser.add_argument(
