@@ -16,6 +16,7 @@ python evalAnomalyEoMTVisualize_rewritten.py \
     --state-dict-path "/content/drive/MyDrive/ml_anomaly_segmentation/eomt_cityscapes.bin"
 """
 
+import csv
 import glob
 import os
 import warnings
@@ -306,8 +307,164 @@ def print_metric_results(metric_storage):
         print(f"FPR@TPR95 {score_name}: {fpr * 100.0:.4f}")
 
 
-def process_image(image_path, model, device, output_dir, metric_storage, save_scores=True):
-    """Esegue inferenza, salva visualizzazioni e accumula metriche."""
+def create_prediction_stats():
+    """Inizializza accumulatori per capire quali classi Cityscapes vengono predette."""
+    num_classes = len(CITYSCAPES_CLASSES)
+    return {
+        "all_pixels": np.zeros(num_classes, dtype=np.int64),
+        "ood_pixels": np.zeros(num_classes, dtype=np.int64),
+        "ind_pixels": np.zeros(num_classes, dtype=np.int64),
+        "num_images": 0,
+        "num_images_with_ood": 0,
+        "per_image_rows": [],
+    }
+
+
+def class_count_rows(counts, total=None):
+    """Converte un vettore di conteggi per classe in righe leggibili/salvabili."""
+    if total is None:
+        total = int(counts.sum())
+
+    rows = []
+    for class_id, count in enumerate(counts):
+        count = int(count)
+        percentage = 0.0 if total == 0 else 100.0 * count / total
+        rows.append(
+            {
+                "class_id": class_id,
+                "class_name": CITYSCAPES_CLASSES[class_id],
+                "pixels": count,
+                "percentage": percentage,
+            }
+        )
+    rows.sort(key=lambda row: row["pixels"], reverse=True)
+    return rows
+
+
+def update_prediction_stats(image_path, prediction, ood_gt, prediction_stats):
+    """
+    Aggiorna le statistiche sulle classi predette.
+
+    all_pixels: distribuzione delle classi predette su tutti i pixel validi.
+    ood_pixels: distribuzione delle classi predette solo dove la GT OOD vale 1.
+    ind_pixels: distribuzione delle classi predette solo dove la GT OOD vale 0.
+    """
+    valid_mask = ood_gt != IGNORE_INDEX
+    ood_mask = ood_gt == 1
+    ind_mask = ood_gt == 0
+
+    prediction_stats["num_images"] += 1
+    if np.any(ood_mask):
+        prediction_stats["num_images_with_ood"] += 1
+
+    all_counts = np.bincount(
+        prediction[valid_mask].ravel(), minlength=len(CITYSCAPES_CLASSES)
+    )[: len(CITYSCAPES_CLASSES)]
+    ood_counts = np.bincount(
+        prediction[ood_mask].ravel(), minlength=len(CITYSCAPES_CLASSES)
+    )[: len(CITYSCAPES_CLASSES)]
+    ind_counts = np.bincount(
+        prediction[ind_mask].ravel(), minlength=len(CITYSCAPES_CLASSES)
+    )[: len(CITYSCAPES_CLASSES)]
+
+    prediction_stats["all_pixels"] += all_counts
+    prediction_stats["ood_pixels"] += ood_counts
+    prediction_stats["ind_pixels"] += ind_counts
+
+    ood_total = int(ood_counts.sum())
+    if ood_total > 0:
+        dominant_ood_class_id = int(np.argmax(ood_counts))
+        dominant_ood_class_name = CITYSCAPES_CLASSES[dominant_ood_class_id]
+        dominant_ood_percentage = 100.0 * int(ood_counts[dominant_ood_class_id]) / ood_total
+    else:
+        dominant_ood_class_id = -1
+        dominant_ood_class_name = "none"
+        dominant_ood_percentage = 0.0
+
+    prediction_stats["per_image_rows"].append(
+        {
+            "image": str(image_path),
+            "valid_pixels": int(all_counts.sum()),
+            "ood_pixels": ood_total,
+            "dominant_ood_predicted_class_id": dominant_ood_class_id,
+            "dominant_ood_predicted_class_name": dominant_ood_class_name,
+            "dominant_ood_predicted_percentage": dominant_ood_percentage,
+        }
+    )
+
+
+def save_prediction_stats_csv(prediction_stats, output_dir):
+    """Salva CSV con statistiche aggregate e per-immagine sulle predizioni."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    aggregate_path = output_dir / "prediction_class_statistics.csv"
+    with open(aggregate_path, "w", newline="", encoding="utf-8") as f:
+        fieldnames = ["region", "class_id", "class_name", "pixels", "percentage"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for region_name, counts in [
+            ("all_valid_pixels", prediction_stats["all_pixels"]),
+            ("ood_pixels", prediction_stats["ood_pixels"]),
+            ("in_distribution_pixels", prediction_stats["ind_pixels"]),
+        ]:
+            total = int(counts.sum())
+            for row in class_count_rows(counts, total=total):
+                writer.writerow({"region": region_name, **row})
+
+    per_image_path = output_dir / "prediction_ood_summary_per_image.csv"
+    with open(per_image_path, "w", newline="", encoding="utf-8") as f:
+        fieldnames = [
+            "image",
+            "valid_pixels",
+            "ood_pixels",
+            "dominant_ood_predicted_class_id",
+            "dominant_ood_predicted_class_name",
+            "dominant_ood_predicted_percentage",
+        ]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(prediction_stats["per_image_rows"])
+
+    return aggregate_path, per_image_path
+
+
+def print_prediction_stats(prediction_stats, top_k=10):
+    """Stampa una sintesi compatta delle classi predette, soprattutto sui pixel OOD."""
+    print("\nStatistiche predizioni semantic EoMT")
+    print(f"Immagini processate: {prediction_stats['num_images']}")
+    print(f"Immagini con pixel OOD: {prediction_stats['num_images_with_ood']}")
+
+    for title, counts in [
+        ("Classi predette su tutti i pixel validi", prediction_stats["all_pixels"]),
+        ("Classi predette dentro le anomalie OOD", prediction_stats["ood_pixels"]),
+    ]:
+        total = int(counts.sum())
+        print(f"\n{title}:")
+        if total == 0:
+            print("  nessun pixel disponibile")
+            continue
+        for row in class_count_rows(counts, total=total)[:top_k]:
+            if row["pixels"] == 0:
+                continue
+            print(
+                f"  {row['class_name']:<15} "
+                f"{row['pixels']:>10d} px  {row['percentage']:>6.2f}%"
+            )
+
+
+def process_image(
+    image_path,
+    model,
+    device,
+    output_dir,
+    metric_storage,
+    prediction_stats,
+    save_scores=True,
+    compute_metrics=True,
+):
+    """Esegue inferenza, salva visualizzazioni e aggiorna statistiche."""
     image_tensor, pixel_logits = compute_pixel_logits(image_path, model, device)
 
     prediction = compute_semantic_prediction(pixel_logits)
@@ -334,7 +491,10 @@ def process_image(image_path, model, device, output_dir, metric_storage, save_sc
             save_path=score_path,
         )
 
-    add_metrics_for_image(ood_gt, score_maps, metric_storage)
+    update_prediction_stats(image_path, prediction, ood_gt, prediction_stats)
+
+    if compute_metrics:
+        add_metrics_for_image(ood_gt, score_maps, metric_storage)
 
     del pixel_logits
     if device == "cuda":
@@ -382,6 +542,22 @@ def main():
         action="store_true",
         help="Se presente, salva solo prediction-vs-GT e non le mappe anomaly.",
     )
+    parser.add_argument(
+        "--no-metrics",
+        action="store_true",
+        help="Se presente, non calcola/stampa AUPRC e FPR@TPR95.",
+    )
+    parser.add_argument(
+        "--no-prediction-stats",
+        action="store_true",
+        help="Se presente, non stampa e non salva le statistiche sulle classi predette.",
+    )
+    parser.add_argument(
+        "--prediction-stats-top-k",
+        type=int,
+        default=10,
+        help="Numero di classi da stampare nelle statistiche delle predizioni.",
+    )
     args = parser.parse_args()
 
     model, device = load_eomt_model(
@@ -395,6 +571,7 @@ def main():
         raise FileNotFoundError(f"Nessuna immagine trovata con input: {args.input}")
 
     metric_storage = create_metric_storage()
+    prediction_stats = create_prediction_stats()
 
     for image_path in image_paths:
         print(f"Processo: {image_path}")
@@ -404,13 +581,22 @@ def main():
             device=device,
             output_dir=args.output_dir,
             metric_storage=metric_storage,
+            prediction_stats=prediction_stats,
             save_scores=not args.no_score_plots,
+            compute_metrics=not args.no_metrics,
         )
         print(f"  Prediction vs GT salvata in: {prediction_path}")
         if score_path is not None:
             print(f"  Anomaly scores salvati in: {score_path}")
 
-    print_metric_results(metric_storage)
+    if not args.no_prediction_stats:
+        aggregate_csv, per_image_csv = save_prediction_stats_csv(prediction_stats, args.output_dir)
+        print_prediction_stats(prediction_stats, top_k=args.prediction_stats_top_k)
+        print(f"\nStatistiche predizioni salvate in: {aggregate_csv}")
+        print(f"Sintesi OOD per immagine salvata in: {per_image_csv}")
+
+    if not args.no_metrics:
+        print_metric_results(metric_storage)
 
 
 if __name__ == "__main__":
