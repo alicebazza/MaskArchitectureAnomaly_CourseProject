@@ -53,6 +53,14 @@ def _find_model_checkpoint_callback(trainer) -> ModelCheckpoint | None:
             return callback
     return None
 
+def _format_hparam_for_filename(value) -> str:
+    """
+    Converte un iperparametro in una stringa per i checkpoint.
+    """
+
+    if isinstance(value, float):
+        value = f"{value:.6g}"
+    return str(value).replace("-", "m").replace("+", "").replace(".", "p")
 
 _orig_single = _t.raise_unexpected_value
 

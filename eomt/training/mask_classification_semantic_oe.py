@@ -291,5 +291,30 @@ class MaskClassificationSemanticOE(MaskClassificationSemantic):
         self.log("train/loss_eomt", loss_eomt, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train/loss_ood", loss_ood, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train/loss_total", loss_total, on_step=True, on_epoch=True, prog_bar=True)
+        
+        # Log aggregati a livello di epoca: Lightning media i valori osservati
+        # sui batch dell'epoca, producendo curve piu' stabili e confrontabili su WandB.
+        self.log(
+            "losses_epoch/train_loss_total_oe",
+            loss_total,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+            prog_bar=True,
+        )
+        self.log(
+            "losses_epoch/train_rba_loss",
+            loss_ood,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+        )
+        self.log(
+            "losses_epoch/train_loss_without_rba",
+            loss_eomt,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+        )
 
         return loss_total
