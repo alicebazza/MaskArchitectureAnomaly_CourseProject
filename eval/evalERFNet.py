@@ -77,9 +77,6 @@ def main():
     # carica il modello
     model_ERFNet = load_erfnet(args, device).to(device)
     model_ERFNet.eval()
-    
-    plots_dir = "/content/plots_erfnet"
-    os.makedirs(plots_dir, exist_ok=True)
 
     
     for idx, path in enumerate(glob.glob(os.path.expanduser(str(args.input[0])))):
@@ -102,19 +99,6 @@ def main():
 
         if 1 not in np.unique(ood_gts):
             continue
-
-        if len(ood_gts_list) < 5:
-            save_path = os.path.join(
-                plots_dir,
-                f"plot_{len(ood_gts_list)}.png"
-            )
-
-            plot_semantic_results_erfnet(
-                images.squeeze(0),
-                pred_array,
-                ood_gts,
-                save_path=save_path
-            )
 
         ood_gts_list.append(ood_gts)
         

@@ -83,9 +83,6 @@ def main():
     
     # carica il modello
     model_EoMT = load_eomt(device, config, state_dict_path)
-        
-    plots_dir = "/content/plots_eomt"
-    os.makedirs(plots_dir, exist_ok=True)
     
     for idx, path in enumerate(glob.glob(os.path.expanduser(str(args.input[0])))):
     # ciclo su tutte le immagini
@@ -107,19 +104,6 @@ def main():
         # salta immagini senza pixel OOD
         if 1 not in np.unique(ood_gts):
             continue
-            
-        if len(ood_gts_list) < 5:
-            save_path = os.path.join(
-                plots_dir,
-                f"plot_{len(ood_gts_list)}.png"
-            )
-
-            plot_semantic_results_eomt(
-                image.squeeze(0),
-                pred_array,
-                ood_gts,
-                save_path=save_path
-            )
 
         ood_gts_list.append(ood_gts)
         
