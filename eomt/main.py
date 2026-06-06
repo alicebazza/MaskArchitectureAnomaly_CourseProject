@@ -31,24 +31,23 @@ from eomt.datasets.lightning_data_module import LightningDataModule
 import os
 os.environ["TORCH_LOGS"] = "-dynamo"
 
-
 def _default_run_root() -> Path:
     """
     Usa Drive su Colab se disponibile, per salvare log e checkpoint.
     """
-
     colab_drive = Path("/content/drive/MyDrive")
     if colab_drive.exists():
+        # salva tutto su Google Drive per non perdere i dati alla chiusura della sessione
         return colab_drive / "eomt_runs"
+    # altrimenti salva nella cartella corrente del progetto
     return Path.cwd() / "eomt_runs"
-
 
 def _find_model_checkpoint_callback(trainer) -> ModelCheckpoint | None:
     """
     Cerca il callback ModelCheckpoint tra quelli registrati dal trainer.
     """
-
     for callback in trainer.callbacks:
+        # Se trova il callback deputato al salvataggio dei pesi lo restituisce
         if isinstance(callback, ModelCheckpoint):
             return callback
     return None
@@ -57,50 +56,52 @@ def _format_hparam_for_filename(value) -> str:
     """
     Converte un iperparametro in una stringa per i checkpoint.
     """
-
     if isinstance(value, float):
         value = f"{value:.6g}"
     return str(value).replace("-", "m").replace("+", "").replace(".", "p")
 
 _orig_single = _t.raise_unexpected_value
 
-
 def _raise_single(*args, exception=None, **kwargs):
+    # intercetta le eccezioni di configurazione
     if isinstance(exception, Exception):
         raise exception
     return _orig_single(*args, exception=exception, **kwargs)
 
-
 _orig_union = _t.raise_union_unexpected_value
 
-
 def _raise_union(subtypes, val, vals):
+    # scorre gli errori al contrario
     for e in reversed(vals):
         if isinstance(e, Exception):
             raise e
     return _orig_union(subtypes, val, vals)
 
-
 _t.raise_unexpected_value = _raise_single
 _t.raise_union_unexpected_value = _raise_union
 
-# ridefinisce quando Lightning deve fare validazione
+# ridefinisce la logica interna con cui Lightning decide quando avviare il ciclo di validazione
 def _should_check_val_fx(self: _TrainingEpochLoop, data_fetcher: _DataFetcher) -> bool:
+    # se non è l'epoca giusta per fare validazione, restituisce False
     if not self._should_check_val_epoch():
         return False
 
     is_infinite_dataset = self.trainer.val_check_batch == float("inf")
     is_last_batch = self.batch_progress.is_last_batch
+    # se è l'ultimo batch e il dataset è infinito o è un iteratore standard, esegue la validazione
     if is_last_batch and (
         is_infinite_dataset or isinstance(data_fetcher, _DataLoaderIterDataFetcher)
     ):
         return True
 
+    # se il trainer ha ricevuto un segnale di stop, forza l'ultimo controllo di validazione
     if self.trainer.should_stop and self.trainer.fit_loop._can_stop_early:
         return True
 
     is_val_check_batch = is_last_batch
+    # se c'è un limite prefissato ai batch di addestramento e il dataset è infinito
     if isinstance(self.trainer.limit_train_batches, int) and is_infinite_dataset:
+        # avvia la validazione ogni N batch impostati dal limite
         is_val_check_batch = (
             self.batch_idx + 1
         ) % self.trainer.limit_train_batches == 0
@@ -110,20 +111,21 @@ def _should_check_val_fx(self: _TrainingEpochLoop, data_fetcher: _DataFetcher) -
                 self.batch_idx + 1
             ) % self.trainer.val_check_batch == 0
         else:
-            # added below to check val based on global steps instead of batches in case of iteration based val check and gradient accumulation
             is_val_check_batch = (
                 self.global_step
             ) % self.trainer.val_check_batch == 0 and not self._should_accumulate()
 
     return is_val_check_batch
 
-
 class LightningCLI(cli.LightningCLI):
     def __init__(self, *args, **kwargs):
         logging.getLogger().setLevel(logging.INFO)
+        # ottimizzazione GPU: abilita i calcoli a precisione TensorFloat32 per velocizzare l'addestramento
         torch.set_float32_matmul_precision("medium")
+        # traccia anche gli output scalari
         torch._dynamo.config.capture_scalar_outputs = True
         torch._dynamo.config.suppress_errors = True
+
         warnings.filterwarnings(
             "ignore",
             message=r".*It is recommended to use .* when logging on epoch level in distributed setting to accumulate the metric across devices.*",
@@ -144,6 +146,7 @@ class LightningCLI(cli.LightningCLI):
             message=r".*functools.partial will be a method descriptor in future Python versions*",
         )
 
+        # Inizializza la classe base di LightningCLI
         super().__init__(*args, **kwargs)
 
     def add_arguments_to_parser(self, parser):
@@ -154,6 +157,7 @@ class LightningCLI(cli.LightningCLI):
             help="Disabilita il resume automatico dall'ultimo checkpoint trovato.",
         )
 
+        # collega automaticamente i parametri del Dataset (data) al Modello (model)
         parser.link_arguments(
             "data.init_args.num_classes", "model.init_args.num_classes"
         )
@@ -184,10 +188,12 @@ class LightningCLI(cli.LightningCLI):
         if hasattr(self.trainer.logger.experiment, "log_code"):
             is_gitignored = parse_gitignore(".gitignore")
             include_fn = lambda path: path.endswith(".py") or path.endswith(".yaml")
+            # salva una copia di tutti i file di codice .py e di configurazione .yaml usati, escludendo il .gitignore
             self.trainer.logger.experiment.log_code(
                 ".", include_fn=include_fn, exclude_fn=is_gitignored
             )
 
+        # configura dinamicamente la cartella in cui salvare i checkpoint dei pesi del modello
         checkpoint_callback = _find_model_checkpoint_callback(self.trainer)
         if checkpoint_callback is not None:
             run_name = getattr(self.trainer.logger, "name", "default_run")
@@ -202,7 +208,7 @@ class LightningCLI(cli.LightningCLI):
         if not self.config[self.config["subcommand"]]["compile_disabled"]:
             model = torch.compile(model)
 
-        # Se esiste un last.ckpt nella cartella del checkpoint, ripartiamo da lì.
+        # riprende l'addestramento da dove si era interrotto
         if not self.config[self.config["subcommand"]]["resume_disabled"]:
             checkpoint_callback = _find_model_checkpoint_callback(self.trainer)
             if checkpoint_callback is not None and checkpoint_callback.dirpath is not None:
@@ -213,36 +219,34 @@ class LightningCLI(cli.LightningCLI):
 
         self.trainer.fit(model, **kwargs)
 
-
 def cli_main():
     LightningCLI(
-        LightningModule,
-        LightningDataModule,
-        subclass_mode_model=True,
-        subclass_mode_data=True,
+        LightningModule,       # classe dell'addestramento (MaskClassificationSemanticOE)
+        LightningDataModule,   # modulo dei dati (CityscapesSemanticOE)
+        subclass_mode_model=True, # possibilità di passare sottoclassi del modello tramite file YAML
+        subclass_mode_data=True,  # possibilità di passare sottoclassi del dataset tramite file YAML
         save_config_callback=None,
-        seed_everything_default=0,
+        seed_everything_default=0, # esperimento riproducibile
         trainer_defaults={
             "precision": "16-mixed",
             "enable_model_summary": False,
             "default_root_dir": str(_default_run_root()),
             "callbacks": [
                 ModelSummary(max_depth=3),
-                LearningRateMonitor(logging_interval="epoch"),
+                LearningRateMonitor(logging_interval="epoch"), # traccia l'andamento del Learning Rate ad ogni epoca
                 ModelCheckpoint(
                     dirpath=str(_default_run_root() / "checkpoints" / "pending_run"),
                     filename="epoch{epoch:03d}-step{step:06d}",
-                    save_last=True,
-                    save_top_k=-1,
-                    every_n_epochs=1,
+                    save_last=True, # salva sempre un file "last.ckpt" aggiornato all'ultimo step svolto
+                    save_top_k=-1,  # salva tutti i checkpoint generati senza sovrascriverli o cancellarli
+                    every_n_epochs=1, # esegue il salvataggio dei pesi alla fine di ogni singola epoca
                 ),
             ],
             "devices": 1,
-            "gradient_clip_val": 0.01,
-            "gradient_clip_algorithm": "norm",
+            "gradient_clip_val": 0.01, # clipping dei gradienti per evitare il problema del gradiente esplosivo
+            "gradient_clip_algorithm": "norm", # norma euclidea per ridimensionare la grandezza dei gradienti
         },
     )
-
 
 if __name__ == "__main__":
     cli_main()

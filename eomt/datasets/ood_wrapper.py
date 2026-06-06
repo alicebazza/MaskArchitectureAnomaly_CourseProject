@@ -6,15 +6,13 @@ from eomt.datasets.coco_ood_paster import CocoOODPaster
 
 # target è un dizionario
 # target = {
-#    "masks": tensor di forma [N, H, W], maschere binarie oggetti
-#    "labels": tensor di forma [N], classe di ogni oggetto
-#    "is_crowd": tensor di forma [N]
+#    "masks": tensore di forma [N, H, W], maschere binarie oggetti
+#    "labels": tensore di forma [N], classe di ogni oggetto
+#    "is_crowd": tensore di forma [N]
 #    "ood_mask": maschera dei pixel OoD
 #    "ood_category": categoria dell'oggetto OoD incollato
 
 # N = numero di oggetti presenti nell'immagine
-
-
 
 def _clone_target(target: dict) -> dict:
     """
@@ -42,13 +40,13 @@ class OODDatasetWrapper(torch.utils.data.Dataset):
     Input:
         base_dataset: dataset che restituisce coppie (img, target)
         paster: oggetto con metodo paste che incolla un oggetto OoD
-        p_ood: probabilità di applicare l'incollaggio OoD
+        p_ood: probabilità di applicare l'incollaggio OoD.
 
     Output:
         img: immagine originale oppure modificata con oggetto OoD
         target: dizionario aggiornato con:
             - "ood_mask": maschera booleana [H, W] dei pixel OoD
-            - "ood_category": categoria OoD incollata, oppure None
+            - "ood_category": categoria OoD incollata, oppure None.
 
     Cosa fa:
         Wrappa un dataset esistente e, con probabilità p_ood, incolla un oggetto
@@ -75,7 +73,7 @@ class OODDatasetWrapper(torch.utils.data.Dataset):
             idx: indice dell'elemento da recuperare dal dataset.
 
         Output:
-            img: immagine originale oppure modificata con un oggetto OoD.
+            img: immagine originale oppure modificata con un oggetto OoD
             target: dizionario delle annotazioni aggiornato con:
                 - maschere eventualmente corrette dopo l'occlusione OoD;
                 - "ood_mask": maschera booleana dei pixel OoD;

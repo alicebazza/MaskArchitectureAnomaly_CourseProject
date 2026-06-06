@@ -12,10 +12,10 @@ class CocoOODPaster:
     L'oggetto incollato viene trattato come oggetto OoD.
 
     Input principali:
-        coco_root: cartella principale del dataset COCO.
-        split: sottoinsieme COCO, per esempio "val2017".
-        categories: categorie COCO da cui estrarre gli oggetti.
-        target_height_range: intervallo di altezze per l'oggetto incollato.
+        coco_root: cartella principale del dataset COCO
+        split: sottoinsieme COCO, per esempio "val2017"
+        categories: categorie COCO da cui estrarre gli oggetti
+        target_height_range: intervallo di altezze per l'oggetto incollato
         num_fixed_images: numero massimo di immagini COCO considerate.
 
     Output:
@@ -70,8 +70,8 @@ class CocoOODPaster:
             max_tries: numero massimo di tentativi di estrazione.
 
         Output:
-            obj_img: immagine RGB ritagliata dell'oggetto.
-            obj_mask: maschera binaria dell'oggetto ritagliato.
+            obj_img: immagine RGB ritagliata dell'oggetto
+            obj_mask: maschera binaria dell'oggetto ritagliato
             cat_name: nome della categoria COCO dell'oggetto.
 
         """
@@ -136,11 +136,11 @@ class CocoOODPaster:
         Ridimensiona un oggetto mantenendo le proporzioni.
 
         Input:
-            obj_img: immagine RGB dell'oggetto, array h x w x 3.
+            obj_img: immagine RGB dell'oggetto, array h x w x 3
             obj_mask: maschera binaria dell'oggetto, array h x w.
 
         Output:
-            obj_img: immagine dell'oggetto ridimensionata.
+            obj_img: immagine dell'oggetto ridimensionata
             obj_mask: maschera ridimensionata.
 
         """
@@ -175,8 +175,8 @@ class CocoOODPaster:
             city_img: immagine RGB di destinazione, array H x W x 3.
 
         Output:
-            city_paste: immagine RGB con l'oggetto OoD incollato.
-            ood_mask: maschera binaria H x W dell'oggetto incollato.
+            city_paste: immagine RGB con l'oggetto OoD incollato
+            ood_mask: maschera binaria H x W dell'oggetto incollato
             cat_name: nome della categoria COCO incollata.
 
         """
@@ -212,7 +212,7 @@ class CocoOODPaster:
 
         mask_bool = obj_mask > 0 # maschera oggetto
         roi[mask_bool] = obj_img[mask_bool]
-        # copia nella roi solo i pixel dell'oggetto
+        # copia nella roi (regione di interesse) solo i pixel dell'oggetto
 
         city_paste[y:y+h, x:x+w] = roi
         # mette la roi nell'immagine completa

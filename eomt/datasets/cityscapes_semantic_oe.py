@@ -23,20 +23,20 @@ class CityscapesSemanticOE(CityscapesSemantic):
 
     Input:
         path:
-            Percorso del dataset Cityscapes.
+            percorso del dataset Cityscapes
         coco_root:
-            Percorso del dataset COCO.
+            percorso del dataset COCO
         p_ood:
-            Probabilità con cui un'immagine di training viene modificata
-            incollando un oggetto OOD da COCO.
+            probabilità con cui un'immagine di training viene modificata
+            incollando un oggetto OOD da COCO
         coco_split:
-            Split COCO da usare, per esempio "val2017" o "train2017".
+            split COCO da usare, per esempio "val2017" o "train2017"
         ood_categories:
-            Lista opzionale di categorie COCO da usare come oggetti OOD.
+            lista opzionale di categorie COCO da usare come oggetti OOD
         ood_target_height_range:
-            Range di altezza, in pixel, degli oggetti OOD incollati.
+            range di altezza, in pixel, degli oggetti OOD incollati
         **kwargs:
-            Altri argomenti passati a CityscapesSemantic.
+            altri argomenti passati a CityscapesSemantic.
 
     Output:
         self.cityscapes_train_dataset:
@@ -45,7 +45,7 @@ class CityscapesSemanticOE(CityscapesSemantic):
             Validation set Cityscapes standard, senza OOD.
 
     Cosa fa:
-        Costruisce normalmente i dataset Cityscapes tramite CityscapesSemantic.
+        costruisce normalmente i dataset Cityscapes tramite CityscapesSemantic.
         Durante il setup di training, sostituisce il training set con un wrapper
         che, con probabilità p_ood, incolla oggetti presi da COCO sulle immagini
         Cityscapes. La validation resta invariata.
@@ -56,13 +56,13 @@ class CityscapesSemanticOE(CityscapesSemantic):
         path,
         coco_root: str | Path,
         p_ood: float = 0.1,
-        coco_split: str = "val2017",
-        ood_categories: Optional[Sequence[str]] = None,
-        ood_target_height_range: tuple[int, int] = (80, 250),
+        coco_split: str = "val2017", # quale porzione di coco usare
+        ood_categories: Optional[Sequence[str]] = None, # filtrare quali categorie di coco utilizzare
+        ood_target_height_range: tuple[int, int] = (80, 250), # altezza minima e massima che deve avere l'oggetto
         **kwargs,
     ) -> None:
         super().__init__(path=path, **kwargs)
-        # costruisce un classico Cityscapes con 19 classi
+        # estensione della classe cityscapes_semantic
 
         if not 0.0 <= p_ood <= 1.0:
             raise ValueError(f"p_ood must be in [0, 1], got {p_ood}")
