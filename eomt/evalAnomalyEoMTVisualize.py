@@ -237,14 +237,14 @@ def process_image(
     output_dir = Path(output_dir)
     image_stem = Path(image_path).stem
 
-    prediction_path = output_dir / f"{image_stem}_prediction_vs_gt.png"
+    prediction_path = output_dir / f"{image_stem}_prediction_vs_gt.pdf"
     plot_prediction_vs_gt(image_tensor, prediction, ood_gt, prediction_path)
 
     overlay_path = None
     if save_overlay:
         if overlay_score not in SCORE_NAMES:
             raise ValueError(f"overlay_score deve essere in {SCORE_NAMES}, ricevuto: {overlay_score}")
-        overlay_path = output_dir / f"{image_stem}_overlay_{overlay_score}.png"
+        overlay_path = output_dir / f"{image_stem}_overlay_{overlay_score}.pdf"
         plot_anomaly_overlay(image_tensor, score_maps[overlay_score], overlay_score, overlay_path)
 
     del pixel_logits
