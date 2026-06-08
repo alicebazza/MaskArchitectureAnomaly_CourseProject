@@ -1,15 +1,12 @@
 """
 Visualizzazione ed evaluation di anomaly segmentation con EoMT.
 
-Versione diagnostica e commentata.
-
-Lo script fa cinque cose:
+Lo script fa quattro cose:
 1. esegue EoMT sulle immagini in input;
 2. salva visualizzazioni di immagine, predizione semantica e ground truth OOD;
-3. salva mappe di anomaly score e overlay immagine + anomaly heatmap;
-4. calcola metriche OOD globali e per classe semantica predetta;
-5. salva plot diagnostici globali: istogrammi ID/OOD, PR curve, ROC curve,
-   ranking AUPRC per classe e rapporto OOD per classe.
+3. salva overlay immagine + anomaly heatmap;
+4. calcola metriche OOD globali e per classe semantica predetta,
+   salvando CSV, PR curve globale e ranking AUPRC per classe.
 
 Richiede un file functions.py che definisca:
 - load_eomt
@@ -215,25 +212,6 @@ def plot_prediction_vs_gt(image_tensor, prediction, ood_gt, save_path):
 
     for ax in axes:
         ax.axis("off")
-
-    ensure_parent_dir(save_path)
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=150)
-    plt.close(fig)
-
-
-def plot_anomaly_scores(image_tensor, score_maps, save_path):
-    """Salva immagine originale e mappe dei quattro anomaly score."""
-    fig, axes = plt.subplots(1, 5, figsize=(22, 5))
-    axes[0].imshow(tensor_to_numpy_image(image_tensor))
-    axes[0].set_title("Image")
-    axes[0].axis("off")
-
-    for ax, score_name in zip(axes[1:], SCORE_NAMES):
-        im = ax.imshow(score_maps[score_name])
-        ax.set_title(score_name)
-        ax.axis("off")
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
     ensure_parent_dir(save_path)
     plt.tight_layout()
@@ -468,35 +446,6 @@ def print_class_metrics(metric_storage):
                 print(f"  {score_name:<8} non calcolabile")
 
 
-def plot_score_histograms(metric_storage, output_dir, bins=100):
-    """Salva istogrammi degli score separando pixel ID e OOD."""
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    gt = concatenate_metric_arrays(metric_storage["global"]["ood_gts"]).astype(bool)
-    if gt.size == 0 or np.unique(gt).size < 2:
-        print("Istogrammi non calcolabili: servono pixel ID e OOD.")
-        return None
-
-    save_path = output_dir / "score_histograms_id_vs_ood.png"
-    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-    axes = axes.reshape(-1)
-
-    for ax, score_name in zip(axes, SCORE_NAMES):
-        scores = concatenate_metric_arrays(metric_storage["global"]["scores"][score_name])
-        ax.hist(scores[~gt], bins=bins, density=True, alpha=0.5, label="ID")
-        ax.hist(scores[gt], bins=bins, density=True, alpha=0.5, label="OOD")
-        ax.set_title(score_name)
-        ax.set_xlabel("anomaly score")
-        ax.set_ylabel("density")
-        ax.legend()
-
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=150)
-    plt.close(fig)
-    print("Salvo istogrammi ID/OOD in:", save_path)
-    return save_path
-
-
 def plot_pr_curves(metric_storage, output_dir):
     """Salva le Precision-Recall curve globali per tutti gli score."""
     if precision_recall_curve is None or auc is None:
@@ -529,42 +478,6 @@ def plot_pr_curves(metric_storage, output_dir):
     plt.savefig(save_path, bbox_inches="tight", dpi=150)
     plt.close(fig)
     print("Salvo PR curve in:", save_path)
-    return save_path
-
-
-def plot_roc_curves(metric_storage, output_dir):
-    """Salva le ROC curve globali per tutti gli score."""
-    if roc_curve is None or auc is None:
-        print("ROC curve non salvata: scikit-learn non disponibile.")
-        return None
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    gt = concatenate_metric_arrays(metric_storage["global"]["ood_gts"])
-    if gt.size == 0 or np.unique(gt).size < 2:
-        print("ROC curve non calcolabile: servono pixel ID e OOD.")
-        return None
-
-    save_path = output_dir / "roc_curves_global.png"
-    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
-
-    for score_name in SCORE_NAMES:
-        scores = concatenate_metric_arrays(metric_storage["global"]["scores"][score_name])
-        fpr, tpr, _ = roc_curve(gt, scores)
-        roc_auc = auc(fpr, tpr)
-        ax.plot(fpr, tpr, label=f"{score_name} AUROC={roc_auc:.4f}")
-
-    ax.plot([0, 1], [0, 1], linestyle="--", label="random")
-    ax.set_xlabel("False Positive Rate")
-    ax.set_ylabel("True Positive Rate")
-    ax.set_title("Global ROC curves")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=150)
-    plt.close(fig)
-    print("Salvo ROC curve in:", save_path)
     return save_path
 
 
@@ -619,44 +532,12 @@ def plot_class_auprc(metric_storage, output_dir, score_name=DEFAULT_OVERLAY_SCOR
     return save_path
 
 
-def plot_class_ood_ratio(metric_storage, output_dir):
-    """Salva il rapporto OOD/validi per ciascuna classe predetta."""
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    class_names, _, ood_ratios, valid_pixels = collect_class_values(metric_storage, DEFAULT_OVERLAY_SCORE)
-    if len(class_names) == 0:
-        print("OOD ratio per classe non calcolabile.")
-        return None
-
-    class_names = np.array(class_names)
-    order = np.argsort(ood_ratios)
-
-    save_path = output_dir / "class_ood_ratio.png"
-    fig, ax = plt.subplots(1, 1, figsize=(8, max(5, 0.35 * len(class_names))))
-    ax.barh(class_names[order], ood_ratios[order])
-    ax.set_xlabel("OOD pixels / valid pixels")
-    ax.set_title("OOD ratio per predicted class")
-    ax.grid(True, axis="x", alpha=0.3)
-
-    for y, idx in enumerate(order):
-        ax.text(ood_ratios[idx], y, f"  n={valid_pixels[idx]}", va="center", fontsize=8)
-
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight", dpi=150)
-    plt.close(fig)
-    print("Salvo OOD ratio per classe in:", save_path)
-    return save_path
-
-
 def save_diagnostic_plots(metric_storage, output_dir, class_score=DEFAULT_OVERLAY_SCORE):
-    """Salva tutti i plot diagnostici globali e per classe."""
+    """Salva solo i plot diagnostici essenziali: PR curve e ranking AUPRC per classe."""
     paths = []
     for path in [
-        plot_score_histograms(metric_storage, output_dir),
         plot_pr_curves(metric_storage, output_dir),
-        plot_roc_curves(metric_storage, output_dir),
         plot_class_auprc(metric_storage, output_dir, score_name=class_score),
-        plot_class_ood_ratio(metric_storage, output_dir),
     ]:
         if path is not None:
             paths.append(path)
@@ -669,7 +550,6 @@ def process_image(
     device,
     output_dir,
     metric_storage,
-    save_scores=True,
     save_overlay=True,
     overlay_score=DEFAULT_OVERLAY_SCORE,
 ):
@@ -686,9 +566,6 @@ def process_image(
     plot_prediction_vs_gt(image_tensor, prediction, ood_gt, prediction_path)
 
     score_path = None
-    if save_scores:
-        score_path = output_dir / f"{image_stem}_anomaly_scores.png"
-        plot_anomaly_scores(image_tensor, score_maps, score_path)
 
     overlay_path = None
     if save_overlay:
@@ -746,11 +623,6 @@ def build_argument_parser():
         help="Score da usare per overlay e ranking per classe.",
     )
     parser.add_argument(
-        "--no-score-plots",
-        action="store_true",
-        help="Se presente, non salva le quattro mappe anomaly per immagine.",
-    )
-    parser.add_argument(
         "--no-overlay-plots",
         action="store_true",
         help="Se presente, non salva gli overlay immagine + anomaly score.",
@@ -759,11 +631,6 @@ def build_argument_parser():
         "--no-metrics",
         action="store_true",
         help="Se presente, non calcola metriche globali e per classe.",
-    )
-    parser.add_argument(
-        "--no-diagnostic-plots",
-        action="store_true",
-        help="Se presente, non salva istogrammi, PR/ROC curve e plot per classe.",
     )
     return parser
 
@@ -789,13 +656,10 @@ def main():
             device=device,
             output_dir=args.output_dir,
             metric_storage=metric_storage,
-            save_scores=not args.no_score_plots,
             save_overlay=not args.no_overlay_plots,
             overlay_score=args.overlay_score,
         )
         print(f"  Prediction vs GT salvata in: {prediction_path}")
-        if score_path is not None:
-            print(f"  Anomaly scores salvati in: {score_path}")
         if overlay_path is not None:
             print(f"  Overlay salvato in: {overlay_path}")
 
@@ -807,16 +671,16 @@ def main():
         print(f"\nMetriche globali salvate in: {global_csv_path}")
         print(f"Metriche per classe salvate in: {class_csv_path}")
 
-        if not args.no_diagnostic_plots:
-            diagnostic_paths = save_diagnostic_plots(
-                metric_storage,
-                args.output_dir,
-                class_score=args.overlay_score,
-            )
-            print("\nPlot diagnostici salvati:")
-            for path in diagnostic_paths:
-                print(f"  {path}")
+        diagnostic_paths = save_diagnostic_plots(
+            metric_storage,
+            args.output_dir,
+            class_score=args.overlay_score,
+        )
+        print("\nPlot diagnostici salvati:")
+        for path in diagnostic_paths:
+            print(f"  {path}")
 
 
 if __name__ == "__main__":
     main()
+
