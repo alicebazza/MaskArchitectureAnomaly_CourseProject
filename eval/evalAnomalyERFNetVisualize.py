@@ -45,7 +45,7 @@ from functions import (
 IGNORE_INDEX = 255
 IMAGE_SIZE = (1024, 1024)
 SCORE_NAMES = ["msp", "maxlogit", "entropy", "rba"]
-DEFAULT_OVERLAY_SCORE = "msp"
+DEFAULT_OVERLAY_SCORE = "maxlogit"
 
 CITYSCAPES_CLASSES = [
     "road", "sidewalk", "building", "wall", "fence", "pole",
