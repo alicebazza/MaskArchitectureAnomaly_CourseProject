@@ -48,7 +48,6 @@ from functions import (
 IGNORE_INDEX = 255
 IMAGE_SIZE = (1024, 1024)
 SCORE_NAMES = ["msp", "maxlogit", "entropy", "rba"]
-DEFAULT_OVERLAY_SCORE = "rba"
 
 CITYSCAPES_CLASSES = [
     "road", "sidewalk", "building", "wall", "fence", "pole",
@@ -242,10 +241,18 @@ def process_image(
 
     overlay_path = None
     if save_overlay:
-        if overlay_score not in SCORE_NAMES:
-            raise ValueError(f"overlay_score deve essere in {SCORE_NAMES}, ricevuto: {overlay_score}")
-        overlay_path = output_dir / f"{image_stem}_overlay_{overlay_score}.pdf"
-        plot_anomaly_overlay(image_tensor, score_maps[overlay_score], overlay_score, overlay_path)
+        for score_name in SCORE_NAMES:
+            overlay_path = (
+                output_dir /
+                f"{image_stem}_overlay_{score_name}.pdf"
+            )
+
+            plot_anomaly_overlay(
+                image_tensor,
+                score_maps[score_name],
+                score_name,
+                overlay_path,
+            )
 
     del pixel_logits
     if device == "cuda":
