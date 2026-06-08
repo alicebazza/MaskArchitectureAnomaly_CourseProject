@@ -43,8 +43,8 @@ from functions import (
 
 
 IGNORE_INDEX = 255
-IMAGE_SIZE = (1024, 1024)
-SCORE_NAMES = ["msp", "maxlogit", "entropy", "rba"]
+IMAGE_SIZE = (512, 1024)
+SCORE_NAMES = ["msp", "maxlogit", "entropy"]
 DEFAULT_OVERLAY_SCORE = "maxlogit"
 
 CITYSCAPES_CLASSES = [
@@ -114,6 +114,7 @@ def compute_pixel_logits(image_path, model, device):
         output = model(image_tensor.unsqueeze(0))
         if isinstance(output, (tuple, list)):
             output = output[0]
+            output = output[:, :-1, :, :]
         pixel_logits = output.squeeze(0)
         if pixel_logits.shape[-2:] != IMAGE_SIZE:
             pixel_logits = F.interpolate(
@@ -132,13 +133,12 @@ def compute_semantic_prediction(pixel_logits):
 
 
 def compute_anomaly_score_maps(pixel_logits):
-    """Calcola le mappe MSP, MaxLogit, Entropy e RBA."""
-    msp, maxlogit, entropy, rba = anomaly_scores(pixel_logits.detach().cpu(), use_rba=True)
+    """Calcola le mappe MSP, MaxLogit, Entropy."""
+    msp, maxlogit, entropy= anomaly_scores(pixel_logits.detach().cpu(), use_rba=True)
     return {
         "msp": msp.detach().cpu().numpy(),
         "maxlogit": maxlogit.detach().cpu().numpy(),
         "entropy": entropy.detach().cpu().numpy(),
-        "rba": rba.detach().cpu().numpy(),
     }
 
 
