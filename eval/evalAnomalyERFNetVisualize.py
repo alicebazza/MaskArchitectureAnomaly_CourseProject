@@ -134,7 +134,7 @@ def compute_semantic_prediction(pixel_logits):
 
 def compute_anomaly_score_maps(pixel_logits):
     """Calcola le mappe MSP, MaxLogit, Entropy."""
-    msp, maxlogit, entropy= anomaly_scores(pixel_logits.detach().cpu(), use_rba=True)
+    msp, maxlogit, entropy= anomaly_scores(pixel_logits.detach().cpu(), use_rba=False)
     return {
         "msp": msp.detach().cpu().numpy(),
         "maxlogit": maxlogit.detach().cpu().numpy(),
