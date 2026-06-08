@@ -225,7 +225,6 @@ def process_image(
     device,
     output_dir,
     save_overlay=True,
-    overlay_score=DEFAULT_OVERLAY_SCORE,
 ):
     """Processa una immagine e salva output visuali."""
     image_tensor, pixel_logits = compute_pixel_logits(image_path, model, device)
@@ -297,7 +296,6 @@ def build_argument_parser():
     parser.add_argument(
         "--overlay-score",
         choices=SCORE_NAMES,
-        default=DEFAULT_OVERLAY_SCORE,
         help="Score da usare per overlay.",
     )
     parser.add_argument(
