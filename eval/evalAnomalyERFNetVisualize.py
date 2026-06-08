@@ -1,25 +1,29 @@
 """
-Visualizzazione di anomaly segmentation con EoMT.
+Visualizzazione di anomaly segmentation con ERFNet.
 
 Lo script fa tre cose:
-1. esegue EoMT sulle immagini in input;
+1. esegue ERFNet sulle immagini in input;
 2. salva visualizzazioni di immagine, predizione semantica e ground truth OOD;
 3. salva overlay immagine + anomaly heatmap.
 
 Non calcola metriche globali, metriche per classe, CSV o curve diagnostiche.
 
 Richiede un file functions.py che definisca:
-- load_eomt
-- eomt_to_pixel_logits
+- load_erfnet
 - load_ood_gt
 - anomaly_scores
 """
 
+import builtins
 import glob
 import os
-import warnings
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import Any
+
+# Compatibilita con functions.py nel caso usi Any nelle type annotations
+# senza importarlo esplicitamente.
+builtins.Any = Any
 
 import matplotlib
 matplotlib.use("Agg")
@@ -27,20 +31,13 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 import torch
-import yaml
 from PIL import Image
 from torch.nn import functional as F
 from torchvision.transforms import Compose, Resize, ToTensor
 
-try:
-    from lightning import seed_everything
-except ImportError:
-    seed_everything = None
-
 from functions import (
     anomaly_scores,
-    eomt_to_pixel_logits,
-    load_eomt,
+    load_erfnet,
     load_ood_gt,
 )
 
@@ -48,7 +45,7 @@ from functions import (
 IGNORE_INDEX = 255
 IMAGE_SIZE = (1024, 1024)
 SCORE_NAMES = ["msp", "maxlogit", "entropy", "rba"]
-DEFAULT_OVERLAY_SCORE = "maxlogit"
+DEFAULT_OVERLAY_SCORE = "msp"
 
 CITYSCAPES_CLASSES = [
     "road", "sidewalk", "building", "wall", "fence", "pole",
@@ -81,45 +78,50 @@ INPUT_TRANSFORM = Compose([Resize(IMAGE_SIZE, Image.BILINEAR), ToTensor()])
 def resolve_device(device_argument):
     """Sceglie il device richiesto oppure CUDA se disponibile."""
     if device_argument is not None:
-        return device_argument
-    return "cuda" if torch.cuda.is_available() else "cpu"
+        return torch.device(device_argument)
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def load_eomt_model(config_path, state_dict_path, device_argument=None):
-    """Carica configurazione, pesi e modello EoMT."""
-    if seed_everything is not None:
-        seed_everything(0, verbose=False)
-    else:
-        torch.manual_seed(0)
-        np.random.seed(0)
+def load_erfnet_model(load_dir, erfnet_weights, device_argument=None):
+    """Carica pesi e modello ERFNet."""
+    torch.manual_seed(0)
+    np.random.seed(0)
 
     device = resolve_device(device_argument)
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    class Args:
+        pass
 
-    warnings.filterwarnings(
-        "ignore",
-        message=r".*Attribute 'network' is an instance of `nn\.Module` and is already saved during checkpointing.*",
-    )
+    args = Args()
+    args.loadDir = load_dir
+    args.erfnetWeights = erfnet_weights
 
-    model = load_eomt(device=device, config=config, state_dict_path=state_dict_path)
+    model = load_erfnet(args, device)
     return model, device
 
 
 def load_image(image_path, device):
-    """Carica una immagine RGB nel formato atteso da EoMT."""
+    """Carica una immagine RGB nel formato atteso da ERFNet."""
     original_image = Image.open(image_path).convert("RGB")
     image_tensor = INPUT_TRANSFORM(original_image).float()
-    image_tensor = (image_tensor * 255).to(torch.uint8)
     return image_tensor.to(device)
 
 
 def compute_pixel_logits(image_path, model, device):
-    """Esegue inferenza EoMT su una singola immagine."""
+    """Esegue inferenza ERFNet su una singola immagine."""
     image_tensor = load_image(image_path, device)
     with torch.no_grad():
-        pixel_logits = eomt_to_pixel_logits(image_tensor, device, model)
+        output = model(image_tensor.unsqueeze(0))
+        if isinstance(output, (tuple, list)):
+            output = output[0]
+        pixel_logits = output.squeeze(0)
+        if pixel_logits.shape[-2:] != IMAGE_SIZE:
+            pixel_logits = F.interpolate(
+                pixel_logits.unsqueeze(0),
+                size=IMAGE_SIZE,
+                mode="bilinear",
+                align_corners=False,
+            ).squeeze(0)
     return image_tensor, pixel_logits
 
 
@@ -189,7 +191,7 @@ def plot_prediction_vs_gt(image_tensor, prediction, ood_gt, save_path):
     axes[0].imshow(tensor_to_numpy_image(image_tensor))
     axes[0].set_title("Image")
     axes[1].imshow(apply_colormap(prediction, cityscapes_mapping()))
-    axes[1].set_title("EoMT semantic prediction")
+    axes[1].set_title("ERFNet semantic prediction")
     axes[2].imshow(apply_colormap(ood_gt, OOD_PALETTE))
     axes[2].set_title("OOD ground truth")
 
@@ -248,7 +250,7 @@ def process_image(
         plot_anomaly_overlay(image_tensor, score_maps[overlay_score], overlay_score, overlay_path)
 
     del pixel_logits
-    if device == "cuda":
+    if device.type == "cuda":
         torch.cuda.empty_cache()
 
     return prediction_path, overlay_path
@@ -272,14 +274,14 @@ def build_argument_parser():
         help="Cartella in cui salvare visualizzazioni e overlay.",
     )
     parser.add_argument(
-        "--config-path",
-        default="configs/dinov2/cityscapes/semantic/eomt_base_640.yaml",
-        help="Path della config EoMT.",
+        "--loadDir",
+        default="/content/drive/MyDrive/ml_anomaly_segmentation",
+        help="Cartella che contiene i pesi ERFNet.",
     )
     parser.add_argument(
-        "--state-dict-path",
-        default="/content/drive/MyDrive/ml_anomaly_segmentation/eomt_cityscapes.bin",
-        help="Path del file .bin con i pesi del modello.",
+        "--erfnetWeights",
+        default="erfnet_cityscapes.pth",
+        help="Nome del file checkpoint con i pesi ERFNet.",
     )
     parser.add_argument(
         "--device",
@@ -306,7 +308,7 @@ def main():
     parser = build_argument_parser()
     args = parser.parse_args()
 
-    model, device = load_eomt_model(args.config_path, args.state_dict_path, args.device)
+    model, device = load_erfnet_model(args.loadDir, args.erfnetWeights, args.device)
 
     image_paths = collect_image_paths(args.input)
     if not image_paths:
