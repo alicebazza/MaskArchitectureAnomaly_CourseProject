@@ -233,7 +233,7 @@ def cli_main():
             "default_root_dir": str(_default_run_root()),
             "callbacks": [
                 ModelSummary(max_depth=3),
-                LearningRateMonitor(logging_interval="epoch"), # traccia l'andamento del Learning Rate ad ogni epoca
+                LearningRateMonitor(logging_interval="step"), # traccia l'andamento del Learning Rate ad ogni step
                 ModelCheckpoint(
                     dirpath=str(_default_run_root() / "checkpoints" / "pending_run"),
                     filename="epoch{epoch:03d}-step{step:06d}",

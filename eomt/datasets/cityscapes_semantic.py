@@ -12,8 +12,6 @@ from torchvision.datasets import Cityscapes
 from eomt.datasets.lightning_data_module import LightningDataModule
 from eomt.datasets.dataset import Dataset
 from eomt.datasets.transforms import Transforms
-from eomt.datasets.coco_ood_paster import CocoOODPaster
-from eomt.datasets.ood_wrapper import OODDatasetWrapper
 
 
 class CityscapesSemantic(LightningDataModule):

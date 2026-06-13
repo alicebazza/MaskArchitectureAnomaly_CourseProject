@@ -12,8 +12,14 @@ model:
   init_args:
     lambda_rba: 0.1
     rba_alpha: 5.0
-    rba_reduction: sum
+    rba_reduction: mean
     freeze_heads_only: True
+    
+    lr: 1e-4
+    weight_decay: 0.05
+    poly_power: 0.9
+    warmup_steps: [0, 0]
+    
     attn_mask_annealing_enabled: True
     attn_mask_annealing_start_steps: [3317, 8292, 13268]
     attn_mask_annealing_end_steps: [6634, 11609, 16585]
@@ -28,9 +34,9 @@ model:
             backbone_name: vit_base_patch14_reg4_dinov2
 
 data:
-  class_path: eomt.datasets.cityscapes_semantic_oe.CityscapesSemanticOE
+  class_path: datasets.cityscapes_semantic_oe.CityscapesSemanticOE
   init_args:
-    coco_root: null
+    coco_root: /content/drive/MyDrive/datsets/coco
     p_ood: 0.1
     coco_split: val2017
     ood_target_height_range: [80, 250]
