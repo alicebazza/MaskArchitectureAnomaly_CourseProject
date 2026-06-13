@@ -36,7 +36,7 @@ model:
 data:
   class_path: datasets.cityscapes_semantic_oe.CityscapesSemanticOE
   init_args:
-    coco_root: /content/drive/MyDrive/datsets/coco
+    coco_root: /content/drive/MyDrive/datasets/coco
     p_ood: 0.1
     coco_split: val2017
     ood_target_height_range: [80, 250]

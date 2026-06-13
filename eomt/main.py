@@ -217,6 +217,8 @@ class LightningCLI(cli.LightningCLI):
                     logging.info(f"Resuming from checkpoint: {last_checkpoint}")
                     kwargs["ckpt_path"] = str(last_checkpoint)
 
+        print("LOGGER:", type(self.trainer.logger))
+        print("LOGGER NAME:", getattr(self.trainer.logger, "name", None))
         self.trainer.fit(model, **kwargs)
 
 def cli_main():
