@@ -161,7 +161,10 @@ class OODDatasetWrapper(torch.utils.data.Dataset):
 
         # Preserva dtype e scala dell'immagine originale.
         if torch.is_floating_point(original_img):
-            img_tensor = img_tensor.to(dtype=original_img.dtype) / 255.0
+            img_tensor = img_tensor.to(dtype=original_img.dtype)
+
+            if original_img.detach().max() <= 1.0:
+                img_tensor = img_tensor / 255.0
         else:
             img_tensor = img_tensor.to(dtype=original_img.dtype)
 

@@ -53,6 +53,7 @@ def main():
         help="A list of space separated input images; "
         "or a single glob pattern such as 'directory/*.jpg'",
     )
+    parser.add_argument("--weights", default="/content/drive/MyDrive/eomt_cityscapes.bin")
     parser.add_argument('--cpu', action='store_true')
     args = parser.parse_args()
     
@@ -74,8 +75,7 @@ def main():
     config_path = 'configs/dinov2/cityscapes/semantic/eomt_base_640.yaml'
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
-    state_dict_path = '/content/drive/MyDrive/eomt_cityscapes.bin'
-    # state_dict_path = '/content/drive/MyDrive/eomt_cityscapes_oe_finetuned.pth'  # finetuning
+    state_dict_path = args.weights
     
     warnings.filterwarnings("ignore",
         message=r".*Attribute 'network' is an instance of `nn\.Module` and is already saved during checkpointing.*",
