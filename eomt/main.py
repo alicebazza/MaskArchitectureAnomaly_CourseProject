@@ -196,9 +196,15 @@ class LightningCLI(cli.LightningCLI):
         # configura dinamicamente la cartella in cui salvare i checkpoint dei pesi del modello
         checkpoint_callback = _find_model_checkpoint_callback(self.trainer)
         if checkpoint_callback is not None:
-            run_name = getattr(self.trainer.logger, "name", "default_run")
-            checkpoint_dir = _default_run_root() / "checkpoints" / run_name
-            checkpoint_callback.dirpath = str(checkpoint_dir)
+            run_name = (
+            getattr(getattr(self.trainer.logger, "experiment", None), "name", None)
+            or getattr(self.trainer.logger, "_name", None)
+            or getattr(self.trainer.logger, "name", None)
+            or "default_run"
+        )
+
+        checkpoint_dir = _default_run_root() / "checkpoints" / run_name
+        checkpoint_callback.dirpath = str(checkpoint_dir)
             checkpoint_callback.FILE_EXTENSION = ".ckpt"
 
         self.trainer.fit_loop.epoch_loop._should_check_val_fx = MethodType(
@@ -217,8 +223,6 @@ class LightningCLI(cli.LightningCLI):
                     logging.info(f"Resuming from checkpoint: {last_checkpoint}")
                     kwargs["ckpt_path"] = str(last_checkpoint)
 
-        print("LOGGER:", type(self.trainer.logger))
-        print("LOGGER NAME:", getattr(self.trainer.logger, "name", None))
         self.trainer.fit(model, **kwargs)
 
 def cli_main():
