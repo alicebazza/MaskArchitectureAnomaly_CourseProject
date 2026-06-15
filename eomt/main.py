@@ -204,10 +204,6 @@ class LightningCLI(cli.LightningCLI):
 
             print("CHECKPOINT DIR:", checkpoint_callback.dirpath)
 
-        checkpoint_dir = _default_run_root() / "checkpoints" / run_name
-        checkpoint_callback.dirpath = str(checkpoint_dir)
-            checkpoint_callback.FILE_EXTENSION = ".ckpt"
-
         self.trainer.fit_loop.epoch_loop._should_check_val_fx = MethodType(
             _should_check_val_fx, self.trainer.fit_loop.epoch_loop
         )

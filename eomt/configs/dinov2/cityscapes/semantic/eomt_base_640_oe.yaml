@@ -1,11 +1,11 @@
 trainer:
-  max_epochs: 3
+  max_epochs: 10
   logger:
     class_path: lightning.pytorch.loggers.wandb.WandbLogger
     init_args:
       resume: allow
       project: "eomt"
-      name: "cityscapes_semantic_eomt_base_640_oe"
+      name: "oe_p01_a5_lr1e4_10epochs"
 
 model:
   class_path: training.mask_classification_semantic_oe.MaskClassificationSemanticOE

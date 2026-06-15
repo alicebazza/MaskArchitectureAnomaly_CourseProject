@@ -58,7 +58,6 @@ def load_eomt(device: str | torch.device, config: dict[str, Any], state_dict_pat
     network_cls = getattr(importlib.import_module(network_module_name), network_class_name)
     network_kwargs = {k: v for k, v in network_cfg["init_args"].items() if k != "encoder"}
     network = network_cls(
-        masked_attn_enabled=False,
         num_classes=19,
         encoder=encoder,
         **network_kwargs,
