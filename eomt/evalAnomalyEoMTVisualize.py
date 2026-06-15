@@ -4,7 +4,7 @@ Visualizzazione di anomaly segmentation con EoMT.
 Lo script fa tre cose:
 1. esegue EoMT sulle immagini in input;
 2. salva visualizzazioni di immagine, predizione semantica e ground truth OOD;
-3. salva overlay immagine + anomaly heatmap.
+3. salva mappe di anomaly score senza immagine di sfondo.
 
 Non calcola metriche globali, metriche per classe, CSV o curve diagnostiche.
 
@@ -48,7 +48,7 @@ from functions import (
 IGNORE_INDEX = 255
 IMAGE_SIZE = (1024, 1024)
 SCORE_NAMES = ["msp", "maxlogit", "entropy", "rba"]
-DEFAULT_OVERLAY_SCORE = "entropy"
+DEFAULT_SCORE = "rba"
 
 CITYSCAPES_CLASSES = [
     "road", "sidewalk", "building", "wall", "fence", "pole",
@@ -202,17 +202,14 @@ def plot_prediction_vs_gt(image_tensor, prediction, ood_gt, save_path):
     plt.close(fig)
 
 
-def plot_anomaly_overlay(image_tensor, score_map, score_name, save_path, alpha=0.45):
-    """Salva un overlay immagine + heatmap per localizzare lo score."""
-    image_np = tensor_to_numpy_image(image_tensor)
-    normalized_score = normalize_map(score_map)
-
+def plot_anomaly_score_map(score_map, score_name, save_path):
+    """Salva la mappa dello score usando i valori reali per-pixel."""
     fig, ax = plt.subplots(1, 1, figsize=(7, 7))
-    ax.imshow(image_np)
-    im = ax.imshow(normalized_score, alpha=alpha)
-    ax.set_title(f"Overlay anomaly score: {score_name}")
+    im = ax.imshow(score_map, cmap="magma")
+    ax.set_title(f"Anomaly score map: {score_name}")
     ax.axis("off")
-    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    colorbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    colorbar.set_label("Raw score value")
 
     ensure_parent_dir(save_path)
     plt.tight_layout()
@@ -220,13 +217,20 @@ def plot_anomaly_overlay(image_tensor, score_map, score_name, save_path, alpha=0
     plt.close(fig)
 
 
+def save_score_values(score_map, save_path):
+    """Salva i valori numerici per-pixel della mappa di anomaly score."""
+    ensure_parent_dir(save_path)
+    np.save(save_path, score_map)
+
+
 def process_image(
     image_path,
     model,
     device,
     output_dir,
-    save_overlay=True,
-    overlay_score=DEFAULT_OVERLAY_SCORE,
+    save_score_maps=True,
+    score_name=DEFAULT_SCORE,
+    save_score_values_enabled=True,
 ):
     """Processa una immagine e salva output visuali."""
     image_tensor, pixel_logits = compute_pixel_logits(image_path, model, device)
@@ -240,18 +244,29 @@ def process_image(
     prediction_path = output_dir / f"{image_stem}_prediction_vs_gt.pdf"
     plot_prediction_vs_gt(image_tensor, prediction, ood_gt, prediction_path)
 
-    overlay_path = None
-    if save_overlay:
-        if overlay_score not in SCORE_NAMES:
-            raise ValueError(f"overlay_score deve essere in {SCORE_NAMES}, ricevuto: {overlay_score}")
-        overlay_path = output_dir / f"{image_stem}_overlay_{overlay_score}.pdf"
-        plot_anomaly_overlay(image_tensor, score_maps[overlay_score], overlay_score, overlay_path)
+    score_map_paths = []
+    score_value_paths = []
+    if save_score_maps or save_score_values_enabled:
+        selected_scores = SCORE_NAMES if score_name == "all" else [score_name]
+        for selected_score in selected_scores:
+            if selected_score not in SCORE_NAMES:
+                raise ValueError(f"score_name deve essere in {SCORE_NAMES} oppure 'all', ricevuto: {score_name}")
+
+            if save_score_maps:
+                score_map_path = output_dir / f"{image_stem}_score_map_{selected_score}.pdf"
+                plot_anomaly_score_map(score_maps[selected_score], selected_score, score_map_path)
+                score_map_paths.append(score_map_path)
+
+            if save_score_values_enabled:
+                score_value_path = output_dir / f"{image_stem}_score_values_{selected_score}.npy"
+                save_score_values(score_maps[selected_score], score_value_path)
+                score_value_paths.append(score_value_path)
 
     del pixel_logits
     if device == "cuda":
         torch.cuda.empty_cache()
 
-    return prediction_path, overlay_path
+    return prediction_path, score_map_paths, score_value_paths
 
 
 def collect_image_paths(input_pattern):
@@ -288,15 +303,24 @@ def build_argument_parser():
         help="Device da usare. Se omesso, usa CUDA quando disponibile.",
     )
     parser.add_argument(
+        "--score-name",
         "--overlay-score",
-        choices=SCORE_NAMES,
-        default=DEFAULT_OVERLAY_SCORE,
-        help="Score da usare per overlay.",
+        dest="score_name",
+        choices=SCORE_NAMES + ["all"],
+        default=DEFAULT_SCORE,
+        help="Score da salvare come mappa senza immagine di sfondo. Usa 'all' per salvarli tutti.",
     )
     parser.add_argument(
+        "--no-score-map-plots",
         "--no-overlay-plots",
+        dest="no_score_map_plots",
         action="store_true",
-        help="Se presente, non salva gli overlay immagine + anomaly score.",
+        help="Se presente, non salva le mappe degli anomaly score.",
+    )
+    parser.add_argument(
+        "--no-score-values",
+        action="store_true",
+        help="Se presente, non salva i file .npy con i valori per-pixel degli score.",
     )
     return parser
 
@@ -314,17 +338,20 @@ def main():
 
     for image_path in image_paths:
         print(f"Processo: {image_path}")
-        prediction_path, overlay_path = process_image(
+        prediction_path, score_map_paths, score_value_paths = process_image(
             image_path=image_path,
             model=model,
             device=device,
             output_dir=args.output_dir,
-            save_overlay=not args.no_overlay_plots,
-            overlay_score=args.overlay_score,
+            save_score_maps=not args.no_score_map_plots,
+            score_name=args.score_name,
+            save_score_values_enabled=not args.no_score_values,
         )
         print(f"  Prediction vs GT salvata in: {prediction_path}")
-        if overlay_path is not None:
-            print(f"  Overlay salvato in: {overlay_path}")
+        for score_map_path in score_map_paths:
+            print(f"  Score map salvata in: {score_map_path}")
+        for score_value_path in score_value_paths:
+            print(f"  Valori score salvati in: {score_value_path}")
 
 
 if __name__ == "__main__":
