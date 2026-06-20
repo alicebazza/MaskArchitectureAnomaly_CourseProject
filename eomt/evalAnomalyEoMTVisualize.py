@@ -77,6 +77,10 @@ OOD_PALETTE = {
 
 INPUT_TRANSFORM = Compose([Resize(IMAGE_SIZE, Image.BILINEAR), ToTensor()])
 
+SCORE_DISPLAY_LIMITS = {
+    "msp": (0.0, 1.0),
+    "entropy": (0.0, 1.0),
+}
 
 def resolve_device(device_argument):
     """Sceglie il device richiesto oppure CUDA se disponibile."""
@@ -205,7 +209,13 @@ def plot_prediction_vs_gt(image_tensor, prediction, ood_gt, save_path):
 def plot_anomaly_score_map(score_map, score_name, save_path):
     """Salva la mappa dello score usando i valori reali per-pixel."""
     fig, ax = plt.subplots(1, 1, figsize=(7, 7))
-    im = ax.imshow(score_map, cmap="magma")
+    display_limits = SCORE_DISPLAY_LIMITS.get(score_name, (None, None))
+    im = ax.imshow(
+        score_map,
+        cmap="magma",
+        vmin=display_limits[0],
+        vmax=display_limits[1],
+    )
     ax.set_title(f"Anomaly score map: {score_name}")
     ax.axis("off")
     colorbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
